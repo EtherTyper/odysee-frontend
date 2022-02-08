@@ -9,17 +9,17 @@ const defaultState = {
 
 export const blacklistReducer = handleActions(
   {
-    [ACTIONS.FETCH_BLACK_LISTED_CONTENT_STARTED]: state => ({
+    [ACTIONS.FETCH_BLACK_LISTED_CONTENT_STARTED]: (state) => ({
       ...state,
       fetchingBlackListedOutpoints: true,
     }),
     [ACTIONS.FETCH_BLACK_LISTED_CONTENT_COMPLETED]: (state, action) => {
-      const { outpoints, success } = action.data;
+      const { success } = action.data;
       return {
         ...state,
         fetchingBlackListedOutpoints: false,
         fetchingBlackListedOutpointsSucceed: success,
-        blackListedOutpoints: outpoints,
+        blackListedOutpoints: [],
       };
     },
     [ACTIONS.FETCH_BLACK_LISTED_CONTENT_FAILED]: (state, action) => {
