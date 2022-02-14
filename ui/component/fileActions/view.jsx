@@ -112,7 +112,7 @@ export default function FileActions(props: Props) {
     }
   }
   return (
-    <div className="media__actions section__actions--no-margin">
+    <div className="media__actions">
       {ENABLE_FILE_REACTIONS && <FileReactions uri={uri} />}
 
       <ClaimSupportButton uri={uri} fileAction />
@@ -196,7 +196,13 @@ export default function FileActions(props: Props) {
 
                 {claimIsMine && (
                   <>
-                    <MenuItem className="comment__menu-option" onSelect={() => doEditForChannel(claim, editUri)}>
+                    <MenuItem
+                      className="comment__menu-option"
+                      onSelect={() => {
+                        doEditForChannel(claim, editUri);
+                        push(`/$/${PAGES.UPLOAD}`);
+                      }}
+                    >
                       <div className="menu__link">
                         <Icon aria-hidden icon={ICONS.EDIT} />
                         {isLivestreamClaim ? __('Update or Publish Replay') : __('Edit')}

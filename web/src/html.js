@@ -23,7 +23,7 @@ const {
 } = require('../../ui/util/web');
 const { getJsBundleId } = require('../bundle-id.js');
 const { lbryProxy: Lbry } = require('../lbry');
-const { parseURI, normalizeClaimUrl } = require('./lbryURI');
+const { buildURI, parseURI, normalizeClaimUrl } = require('./lbryURI');
 const fs = require('fs');
 const moment = require('moment');
 const PAGES = require('../../ui/constants/pages');
@@ -304,14 +304,14 @@ async function getHtml(ctx) {
     html = fs.readFileSync(path.join(__dirname, '/../dist/index.html'), 'utf8');
   }
 
-  if (ctx?.request?.url) {
-    ctx.request.url = encodeURIComponent(escapeHtmlProperty(decodeURIComponent(ctx.request.url)));
-  }
-
   const requestPath = unscapeHtmlProperty(decodeURIComponent(ctx.path));
   if (requestPath.length === 0) {
     const ogMetadata = buildBasicOgMetadata();
     return insertToHead(html, ogMetadata);
+  }
+
+  if (ctx?.request?.url) {
+    ctx.request.url = encodeURIComponent(escapeHtmlProperty(decodeURIComponent(ctx.request.url)));
   }
 
   const invitePath = `/$/${PAGES.INVITE}/`;
@@ -363,7 +363,8 @@ async function getHtml(ctx) {
   }
 
   if (!requestPath.includes('$')) {
-    const claimUri = normalizeClaimUrl(requestPath.slice(1));
+    const parsedUri = parseURI(normalizeClaimUrl(requestPath.slice(1)));
+    const claimUri = buildURI({ ...parsedUri, startTime: undefined });
     const claim = await resolveClaimOrRedirect(ctx, claimUri);
     const referrerQuery = escapeHtmlProperty(getParameterByName('r', ctx.request.url));
 

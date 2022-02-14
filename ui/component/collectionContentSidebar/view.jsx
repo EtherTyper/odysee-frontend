@@ -1,8 +1,4 @@
 // @flow
-
-// $FlowFixMe
-import { DragDropContext, Droppable } from 'react-beautiful-dnd';
-
 import React from 'react';
 import classnames from 'classnames';
 import ClaimList from 'component/claimList';
@@ -12,6 +8,14 @@ import * as PAGES from 'constants/pages';
 import * as COLLECTIONS_CONSTS from 'constants/collections';
 import Icon from 'component/common/icon';
 import * as ICONS from 'constants/icons';
+
+// prettier-ignore
+const Lazy = {
+  // $FlowFixMe
+  DragDropContext: React.lazy(() => import('react-beautiful-dnd' /* webpackChunkName: "dnd" */).then((module) => ({ default: module.DragDropContext }))),
+  // $FlowFixMe
+  Droppable: React.lazy(() => import('react-beautiful-dnd' /* webpackChunkName: "dnd" */).then((module) => ({ default: module.Droppable }))),
+};
 
 type Props = {
   id: string,
@@ -58,21 +62,23 @@ export default function CollectionContent(props: Props) {
   return (
     <Card
       isBodyList
-      className="file-page__recommended-collection"
+      className="file-page__playlist-collection"
       title={
         <>
-          <span className="file-page__recommended-collection__row">
-            <Icon
-              icon={
-                (id === COLLECTIONS_CONSTS.WATCH_LATER_ID && ICONS.TIME) ||
-                (id === COLLECTIONS_CONSTS.FAVORITES_ID && ICONS.STAR) ||
-                ICONS.STACK
-              }
-              className="icon--margin-right"
-            />
-            {collectionName}
-          </span>
-          <span className="file-page__recommended-collection__row">
+          <a href={`/$/${PAGES.LIST}/${id}`}>
+            <span className="file-page__playlist-collection__row">
+              <Icon
+                icon={
+                  (id === COLLECTIONS_CONSTS.WATCH_LATER_ID && ICONS.TIME) ||
+                  (id === COLLECTIONS_CONSTS.FAVORITES_ID && ICONS.STAR) ||
+                  ICONS.STACK
+                }
+                className="icon--margin-right"
+              />
+              {collectionName}
+            </span>
+          </a>
+          <span className="file-page__playlist-collection__row">
             <Button
               button="alt"
               title={__('Loop')}
@@ -93,39 +99,34 @@ export default function CollectionContent(props: Props) {
         </>
       }
       titleActions={
-        <>
-          <div className="card__title-actions--link">
-            {/* TODO: BUTTON TO SAVE COLLECTION - Probably save/copy modal */}
-            <Button label={__('View List')} button="link" navigate={`/$/${PAGES.LIST}/${id}`} />
-          </div>
-
-          {isMyCollection && (
-            <Button
-              title={__('Edit')}
-              className={classnames('button-toggle', { 'button-toggle--active': showEdit })}
-              icon={ICONS.EDIT}
-              onClick={() => setShowEdit(!showEdit)}
-            />
-          )}
-        </>
+        isMyCollection && (
+          <Button
+            title={__('Edit')}
+            className={classnames('button-toggle', { 'button-toggle--active': showEdit })}
+            icon={ICONS.EDIT}
+            onClick={() => setShowEdit(!showEdit)}
+          />
+        )
       }
       body={
-        <DragDropContext onDragEnd={handleOnDragEnd}>
-          <Droppable droppableId="list__ordering">
-            {(DroppableProvided) => (
-              <ClaimList
-                isCardBody
-                type="small"
-                activeUri={url}
-                uris={collectionUrls}
-                collectionId={id}
-                empty={__('List is Empty')}
-                showEdit={showEdit}
-                droppableProvided={DroppableProvided}
-              />
-            )}
-          </Droppable>
-        </DragDropContext>
+        <React.Suspense fallback={null}>
+          <Lazy.DragDropContext onDragEnd={handleOnDragEnd}>
+            <Lazy.Droppable droppableId="list__ordering">
+              {(DroppableProvided) => (
+                <ClaimList
+                  isCardBody
+                  type="small"
+                  activeUri={url}
+                  uris={collectionUrls}
+                  collectionId={id}
+                  empty={__('List is Empty')}
+                  showEdit={showEdit}
+                  droppableProvided={DroppableProvided}
+                />
+              )}
+            </Lazy.Droppable>
+          </Lazy.DragDropContext>
+        </React.Suspense>
       }
     />
   );
