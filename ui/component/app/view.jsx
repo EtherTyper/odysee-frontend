@@ -79,7 +79,7 @@ type Props = {
   syncLoop: (?boolean) => void,
   currentModal: any,
   syncFatalError: boolean,
-  activeChannelId: ?string,
+  activeChannelClaim: ?ChannelClaim,
   myChannelClaimIds: ?Array<string>,
   subscriptions: Array<Subscription>,
   setActiveChannelIfNotSet: () => void,
@@ -114,7 +114,7 @@ function App(props: Props) {
     currentModal,
     syncFatalError,
     myChannelClaimIds,
-    activeChannelId,
+    activeChannelClaim,
     setActiveChannelIfNotSet,
     setIncognito,
     fetchModBlockedList,
@@ -154,7 +154,7 @@ function App(props: Props) {
   const hasMyChannels = myChannelClaimIds && myChannelClaimIds.length > 0;
   const hasNoChannels = myChannelClaimIds && myChannelClaimIds.length === 0;
   const shouldMigrateLanguage = LANGUAGE_MIGRATIONS[language];
-  const hasActiveChannelClaim = activeChannelId !== undefined;
+  const hasActiveChannelClaim = activeChannelClaim !== undefined;
   const isPersonalized = !IS_WEB || hasVerifiedEmail;
   const renderFiledrop = !isMobile && isAuthenticated;
   const connectionStatus = useConnectionStatus();
@@ -294,6 +294,11 @@ function App(props: Props) {
     // $FlowFixMe
     document.documentElement.setAttribute('theme', theme);
   }, [theme]);
+
+  useEffect(() => {
+    // $FlowFixMe
+    document.body.style.overflowY = currentModal ? 'hidden' : '';
+  }, [currentModal]);
 
   useEffect(() => {
     if (hasMyChannels && !hasActiveChannelClaim) {

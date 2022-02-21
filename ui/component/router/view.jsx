@@ -8,9 +8,10 @@ import { useIsLargeScreen } from 'effects/use-screensize';
 import { lazyImport } from 'util/lazyImport';
 import { LINKED_COMMENT_QUERY_PARAM } from 'constants/comment';
 import { parseURI, isURIValid } from 'util/lbryURI';
-import { SITE_TITLE, WELCOME_VERSION, SIMPLE_SITE } from 'config';
+import { SITE_TITLE, WELCOME_VERSION } from 'config';
 import LoadingBarOneOff from 'component/loadingBarOneOff';
 import { GetLinksData } from 'util/buildHomepage';
+import * as CS from 'constants/claim_search';
 
 import HomePage from 'page/home';
 
@@ -129,6 +130,7 @@ type Props = {
   setReferrer: (?string) => void,
   hasUnclaimedRefereeReward: boolean,
   homepageData: any,
+  wildWestDisabled: boolean,
 };
 
 type PrivateRouteProps = Props & {
@@ -168,12 +170,15 @@ function AppRouter(props: Props) {
     hasUnclaimedRefereeReward,
     setReferrer,
     homepageData,
+    wildWestDisabled,
   } = props;
+
   const { entries, listen, action: historyAction } = history;
   const entryIndex = history.index;
   const urlParams = new URLSearchParams(search);
   const resetScroll = urlParams.get('reset_scroll');
   const hasLinkedCommentInUrl = urlParams.get(LINKED_COMMENT_QUERY_PARAM);
+  const tagParams = urlParams.get(CS.TAGS_KEY);
   const isLargeScreen = useIsLargeScreen();
 
   const homeCategoryPages = React.useMemo(() => {
@@ -276,8 +281,9 @@ function AppRouter(props: Props) {
         <Redirect from={`/$/${PAGES.DEPRECATED__PUBLISHED}`} to={`/$/${PAGES.UPLOADS}`} />
 
         <Route path={`/`} exact component={HomePage} />
-        <Route path={`/$/${PAGES.DISCOVER}`} exact component={DiscoverPage} />
-        {SIMPLE_SITE && <Route path={`/$/${PAGES.WILD_WEST}`} exact component={DiscoverPage} />}
+
+        {(!wildWestDisabled || tagParams) && <Route path={`/$/${PAGES.DISCOVER}`} exact component={DiscoverPage} />}
+        {!wildWestDisabled && <Route path={`/$/${PAGES.WILD_WEST}`} exact component={DiscoverPage} />}
         {homeCategoryPages}
 
         <Route path={`/$/${PAGES.AUTH_SIGNIN}`} exact component={SignInPage} />

@@ -11,6 +11,7 @@ import {
   selectMyChannelClaims,
   selectPendingClaimsById,
   selectClaimIsMine,
+  selectIsMyChannelCountOverLimit,
 } from 'redux/selectors/claims';
 
 import { doFetchTxoPage } from 'redux/actions/wallet';
@@ -390,10 +391,21 @@ export function doClearChannelErrors() {
 }
 
 export function doCreateChannel(name: string, amount: number, optionalParams: any, onConfirm: any) {
-  return (dispatch: Dispatch) => {
+  return (dispatch: Dispatch, getState: GetState) => {
+    const state = getState();
+    const channelCountOverLimit = selectIsMyChannelCountOverLimit(state);
+
     dispatch({
       type: ACTIONS.CREATE_CHANNEL_STARTED,
     });
+
+    if (channelCountOverLimit) {
+      dispatch({
+        type: ACTIONS.CREATE_CHANNEL_FAILED,
+        data: 'Channel limit exceeded',
+      });
+      return;
+    }
 
     const createParams: {
       name: string,
@@ -602,6 +614,12 @@ export function doFetchCollectionListMine(page: number = 1, pageSize: number = 9
     };
 
     Lbry.collection_list({ page, page_size: pageSize, resolve_claims: 1, resolve: true }).then(callback, failure);
+  };
+}
+
+export function doClearClaimSearch() {
+  return (dispatch: Dispatch) => {
+    dispatch({ type: ACTIONS.CLEAR_CLAIM_SEARCH_HISTORY });
   };
 }
 

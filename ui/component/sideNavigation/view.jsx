@@ -34,14 +34,19 @@ const GO_LIVE = {
   icon: ICONS.VIDEO,
 };
 
-const HOME = {
+const getHomeButton = (additionalAction) => ({
   title: 'Home',
   link: `/`,
   icon: ICONS.HOME,
   onClick: () => {
-    if (window.location.pathname === '/') window.location.reload();
+    if (window.location.pathname === '/') {
+      window.scrollTo({ top: 0, left: 0, behavior: 'smooth' });
+      if (additionalAction) {
+        additionalAction();
+      }
+    }
   },
-};
+});
 
 const RECENT_FROM_FOLLOWING = {
   title: 'Following --[sidebar button]--',
@@ -112,6 +117,8 @@ type Props = {
   user: ?User,
   homepageData: any,
   activeChannelStakedLevel: number,
+  wildWestDisabled: boolean,
+  doClearClaimSearch: () => void,
 };
 
 function SideNavigation(props: Props) {
@@ -130,6 +137,8 @@ function SideNavigation(props: Props) {
     user,
     followedTags,
     activeChannelStakedLevel,
+    wildWestDisabled,
+    doClearClaimSearch,
   } = props;
 
   const isLargeScreen = useIsLargeScreen();
@@ -248,6 +257,7 @@ function SideNavigation(props: Props) {
 
   const showMicroMenu = !sidebarOpen && !menuCanCloseCompletely;
   const showPushMenu = sidebarOpen && !menuCanCloseCompletely;
+  const showOverlay = isAbsolute && sidebarOpen;
 
   const showSubscriptionSection = shouldRenderLargeMenu && isPersonalized && subscriptions && subscriptions.length > 0;
   const showTagSection = sidebarOpen && isPersonalized && followedTags && followedTags.length;
@@ -361,6 +371,11 @@ function SideNavigation(props: Props) {
   }
 
   React.useEffect(() => {
+    // $FlowFixMe
+    document.body.style.overflowY = showOverlay ? 'hidden' : '';
+  }, [showOverlay]);
+
+  React.useEffect(() => {
     if (purchaseSuccess) {
       setPulseLibrary(true);
 
@@ -465,7 +480,7 @@ function SideNavigation(props: Props) {
                 'navigation-links--absolute': shouldRenderLargeMenu,
               })}
             >
-              {getLink(HOME)}
+              {getLink(getHomeButton(doClearClaimSearch))}
               {getLink(RECENT_FROM_FOLLOWING)}
               {getLink(PLAYLISTS)}
             </ul>
@@ -480,7 +495,7 @@ function SideNavigation(props: Props) {
                 <>
                   {/* $FlowFixMe -- GetLinksData should fix it's data type */}
                   {EXTRA_SIDEBAR_LINKS.map((linkProps) => getLink(linkProps))}
-                  {getLink(WILD_WEST)}
+                  {!wildWestDisabled && getLink(WILD_WEST)}
                 </>
               )}
             </ul>
@@ -499,7 +514,7 @@ function SideNavigation(props: Props) {
       </nav>
       <div
         className={classnames('navigation__overlay', {
-          'navigation__overlay--active': isAbsolute && sidebarOpen,
+          'navigation__overlay--active': showOverlay,
         })}
         onClick={() => setSidebarOpen(false)}
       />

@@ -1,10 +1,11 @@
 import { connect } from 'react-redux';
 import { selectActiveChannelStakedLevel } from 'redux/selectors/app';
 import { selectSubscriptions } from 'redux/selectors/subscriptions';
+import { doClearClaimSearch } from 'redux/actions/claims';
 import { doClearPurchasedUriSuccess } from 'redux/actions/file';
 import { selectFollowedTags } from 'redux/selectors/tags';
 import { selectUserVerifiedEmail, selectUser } from 'redux/selectors/user';
-import { selectHomepageData, selectLanguage } from 'redux/selectors/settings';
+import { selectHomepageData, selectLanguage, selectWildWestDisabled } from 'redux/selectors/settings';
 import { doSignOut } from 'redux/actions/app';
 import { selectUnseenNotificationCount } from 'redux/selectors/notifications';
 import { selectPurchaseUriSuccess } from 'redux/selectors/claims';
@@ -21,9 +22,11 @@ const select = (state) => ({
   user: selectUser(state),
   homepageData: selectHomepageData(state),
   activeChannelStakedLevel: selectActiveChannelStakedLevel(state),
+  wildWestDisabled: selectWildWestDisabled(state),
 });
 
 export default connect(select, {
+  doClearClaimSearch,
   doSignOut,
   doClearPurchasedUriSuccess,
 })(SideNavigation);

@@ -16,7 +16,6 @@ body {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
-  min-height: 100vh;
   margin-left: auto;
   margin-right: auto;
   margin-top: var(--header-height);
@@ -79,7 +78,6 @@ body {
 }
 
 .main-wrapper__inner--auth {
-  min-height: calc(100vh - var(--header-height));
   padding: 0;
 
   .main--auth-page {
@@ -94,10 +92,6 @@ body {
   z-index: 0;
   margin-right: auto;
   margin-left: auto;
-
-  @media (min-width: $breakpoint-small) {
-    min-height: calc(100vh - var(--header-height));
-  }
 
   @media (max-width: $breakpoint-small) {
     width: 100%;
@@ -166,6 +160,26 @@ body {
       section + .empty__wrap {
         margin: var(--spacing-m);
       }
+      .claim-preview__wrapper--inline {
+        .claim-preview-metadata {
+          .claim-tile__info {
+            margin-top: 0;
+          }
+        }
+        .media__subtitle {
+          padding-bottom: 1;
+          a.button {
+            display: inline-block !important;
+          }
+        }
+        .button--alt {
+          padding: var(--spacing-s);
+        }
+        .button-following {
+          padding-left: var(--spacing-m);
+          padding-right: var(--spacing-m);
+        }
+      }
     }
     @media (max-width: $breakpoint-small) {
       margin-top: var(--spacing-xs) !important;
@@ -174,6 +188,20 @@ body {
         a {
           .button__content {
             align-items: unset;
+          }
+        }
+        .claim-preview-info {
+          margin-top: 2px;
+          margin-bottom: -2px;
+          .claim-preview__title {
+            span {
+              font-size: var(--font-small);
+            }
+          }
+        }
+        .claim-tile__info {
+          .media__subtitle {
+            margin-bottom: 1px;
           }
         }
       }
@@ -204,6 +232,29 @@ body {
 
     @media (min-width: $breakpoint-small) {
       padding: var(--spacing-m);
+    }
+
+    @media (max-width: $breakpoint-small) {
+      margin-top: 0;
+      .card {
+        padding: 0;
+        .card__first-pane {
+          .card__main-actions {
+            .button--alt:last-of-type {
+              top: -1px;
+              float: right;
+              margin-right: 0;
+            }
+            .comment__sort {
+              .button--alt:last-of-type {
+                top: unset;
+                float: unset;
+                margin-right: unset;
+              }
+            }
+          }
+        }
+      }
     }
   }
 
