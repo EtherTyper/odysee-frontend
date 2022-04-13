@@ -10,9 +10,12 @@ import Button from 'component/button';
 import * as ICONS from 'constants/icons';
 import * as MODALS from 'constants/modal_types';
 import * as PAGES from 'constants/pages';
+import { FormField } from 'component/common/form';
 import { STRIPE_PUBLIC_KEY } from 'config';
 import { getStripeEnvironment } from 'util/stripe';
 let stripeEnvironment = getStripeEnvironment();
+
+const STRIPE_PLUGIN_SRC = 'https://js.stripe.com/v3/';
 
 const APIS_DOWN_ERROR_RESPONSE = __('There was an error from the server, please try again later');
 const CARD_SETUP_ERROR_RESPONSE = __('There was an error getting your card setup, please try again later');
@@ -24,8 +27,12 @@ type Props = {
   email: ?string,
   scriptFailedToLoad: boolean,
   doOpenModal: (string, {}) => void,
+  doToast: ({}) => void,
   openModal: (string, {}) => void,
   setAsConfirmingCard: () => void,
+  locale: ?any,
+  preferredCurrency: string,
+  setPreferredCurrency: (string) => void,
 };
 
 // type State = {
@@ -49,20 +56,41 @@ class SettingsStripeCard extends React.Component<Props, State> {
       pageTitle: 'Add Card',
       userCardDetails: {},
       paymentMethodId: '',
+      preferredCurrency: 'USD',
     };
   }
 
   componentDidMount() {
     let that = this;
 
+    const { preferredCurrency, locale } = this.props;
+
+    // use preferredCurrency if it's set on client, otherwise use USD, unless in Europe then use EUR
+    if (preferredCurrency) {
+      that.setState({
+        preferredCurrency: preferredCurrency,
+      });
+    } else if (locale) {
+      if (locale.continent === 'EU') {
+        that.setState({
+          preferredCurrency: 'EUR',
+        });
+      }
+    }
+
     let doToast = this.props.doToast;
 
-    const script = document.createElement('script');
-    script.src = 'https://js.stripe.com/v3/';
-    script.async = true;
+    // only add script if it doesn't already exist
+    const stripeScriptExists = document.querySelectorAll(`script[src="${STRIPE_PLUGIN_SRC}"]`).length > 0;
 
-    // $FlowFixMe
-    document.body.appendChild(script);
+    if (!stripeScriptExists) {
+      const script = document.createElement('script');
+      script.src = STRIPE_PLUGIN_SRC;
+      script.async = true;
+
+      // $FlowFixMe
+      document.body.appendChild(script);
+    }
 
     // public key of the stripe account
     let publicKey = STRIPE_PUBLIC_KEY;
@@ -108,7 +136,7 @@ class SettingsStripeCard extends React.Component<Props, State> {
 
               that.setState({
                 currentFlowStage: 'cardConfirmed',
-                pageTitle: 'Tip History',
+                pageTitle: 'Payment Methods',
                 userCardDetails: cardDetails,
                 paymentMethodId: customerStatusResponse.PaymentMethods[0].id,
               });
@@ -327,7 +355,7 @@ class SettingsStripeCard extends React.Component<Props, State> {
 
               that.setState({
                 currentFlowStage: 'cardConfirmed',
-                pageTitle: 'Tip History',
+                pageTitle: 'Payment Methods',
                 userCardDetails: cardDetails,
                 paymentMethodId: customerStatusResponse.PaymentMethods[0].id,
               });
@@ -343,24 +371,36 @@ class SettingsStripeCard extends React.Component<Props, State> {
   render() {
     let that = this;
 
+    const returnToValue = new URLSearchParams(location.search).get('returnTo');
+    let shouldShowBackToMembershipButton = returnToValue === 'premium';
+
     function setAsConfirmingCard() {
       that.setState({
         currentFlowStage: 'confirmingCard',
       });
     }
 
+    const { setPreferredCurrency } = this.props;
+
+    // when user changes currency in selector
+    function onCurrencyChange(event) {
+      const { value } = event.target;
+
+      // update preferred currency in frontend
+      that.setState({
+        preferredCurrency: value,
+      });
+
+      // update client settings
+      setPreferredCurrency(value);
+    }
+
     const { scriptFailedToLoad, openModal } = this.props;
 
-    const { currentFlowStage, pageTitle, userCardDetails, paymentMethodId } = this.state;
+    const { currentFlowStage, pageTitle, userCardDetails, paymentMethodId, preferredCurrency } = this.state;
 
     return (
-      <Page
-        noFooter
-        noSideNavigation
-        settingsPage
-        className="card-stack"
-        backout={{ title: __(pageTitle), backLabel: __('Back') }}
-      >
+      <Page noFooter noSideNavigation className="card-stack" backout={{ title: __(pageTitle), backLabel: __('Back') }}>
         {/* if Stripe javascript didn't load */}
         <div>
           {scriptFailedToLoad && (
@@ -397,8 +437,19 @@ class SettingsStripeCard extends React.Component<Props, State> {
         {/* if the user has already confirmed their card */}
         {currentFlowStage === 'cardConfirmed' && (
           <div className="successCard">
+            {/* back to membership button */}
+            {shouldShowBackToMembershipButton && (
+              <Button
+                button="primary"
+                label={__('Back To Odysee Premium')}
+                icon={ICONS.UPGRADE}
+                navigate={`/$/${PAGES.ODYSEE_MEMBERSHIP}`}
+                style={{ marginBottom: '20px' }}
+              />
+            )}
             <Card
               title={__('Card Details')}
+              className="add-payment-card-div"
               body={
                 <>
                   <Plastic
@@ -426,12 +477,32 @@ class SettingsStripeCard extends React.Component<Props, State> {
                     label={__('View Transactions')}
                     icon={ICONS.SETTINGS}
                     navigate={`/$/${PAGES.WALLET}?fiatType=outgoing&tab=fiat-payment-history&currency=fiat`}
-                    style={{marginLeft: '10px'}}
+                    style={{ marginLeft: '10px' }}
                   />
                 </>
               }
             />
             <br />
+
+            <div className="currency-to-use-div">
+              <h1 className="currency-to-use-header">{__('Currency To Use')}:</h1>
+
+              <fieldset-section>
+                <FormField
+                  className="currency-to-use-selector"
+                  name="currency_selector"
+                  type="select"
+                  onChange={onCurrencyChange}
+                  value={preferredCurrency}
+                >
+                  {['USD', 'EUR'].map((currency) => (
+                    <option key={currency} value={currency}>
+                      {currency}
+                    </option>
+                  ))}
+                </FormField>
+              </fieldset-section>
+            </div>
           </div>
         )}
       </Page>

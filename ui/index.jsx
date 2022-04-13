@@ -17,7 +17,8 @@ import { doDaemonReady, doAutoUpdate, doOpenModal, doHideModal, doToggle3PAnalyt
 import Lbry, { apiCall } from 'lbry';
 import { isURIValid } from 'util/lbryURI';
 import { setSearchApi } from 'redux/actions/search';
-import { doSetLanguage, doFetchLanguage, doUpdateIsNightAsync } from 'redux/actions/settings';
+import { doSetLanguage, doFetchLanguage, doUpdateIsNightAsync, doFetchHomepages } from 'redux/actions/settings';
+import { doFetchUserLocale } from 'redux/actions/user';
 import { Lbryio, doBlackListedOutpointsSubscribe, doFilteredOutpointsSubscribe } from 'lbryinc';
 import rewards from 'rewards';
 import { store, persistor, history } from 'store';
@@ -28,12 +29,7 @@ import { formatLbryUrlForWeb, formatInAppUrl } from 'util/url';
 import { PersistGate } from 'redux-persist/integration/react';
 import analytics from 'analytics';
 import { doToast } from 'redux/actions/notifications';
-import {
-  getAuthToken,
-  setAuthToken,
-  doDeprecatedPasswordMigrationMarch2020,
-  doAuthTokenRefresh,
-} from 'util/saved-passwords';
+import { getAuthToken, setAuthToken, doAuthTokenRefresh } from 'util/saved-passwords';
 import { X_LBRY_AUTH_TOKEN } from 'constants/token';
 import { PROXY_URL, DEFAULT_LANGUAGE, LBRY_API_URL } from 'config';
 
@@ -55,7 +51,7 @@ import apiPublishCallViaWeb from 'web/setup/publish';
 // If it's caught by componentDidCatch in component/errorBoundary, it will not bubble up to this error reporter
 if (process.env.NODE_ENV === 'production') {
   Sentry.init({
-    dsn: 'https://1f3c88e2e4b341328a638e138a60fb73@sentry.lbry.tech/2',
+    dsn: 'https://1f3c88e2e4b341328a638e138a60fb73@sentry.odysee.tv/2',
     whitelistUrls: [/\/public\/ui.js/],
   });
 }
@@ -99,10 +95,6 @@ if (process.env.SEARCH_API_URL) {
   setSearchApi(process.env.SEARCH_API_URL);
 }
 
-// Fix to make sure old users' cookies are set to the correct domain
-// This can be removed after March 11th, 2021
-// https://github.com/lbryio/lbry-desktop/pull/3830
-doDeprecatedPasswordMigrationMarch2020();
 doAuthTokenRefresh();
 
 // We need to override Lbryio for getting/setting the authToken
@@ -251,9 +243,11 @@ function AppWrapper() {
         if (DEFAULT_LANGUAGE) {
           app.store.dispatch(doFetchLanguage(DEFAULT_LANGUAGE));
         }
+        app.store.dispatch(doFetchHomepages());
         app.store.dispatch(doUpdateIsNightAsync());
         app.store.dispatch(doBlackListedOutpointsSubscribe());
         app.store.dispatch(doFilteredOutpointsSubscribe());
+        app.store.dispatch(doFetchUserLocale());
       }, 25);
 
       analytics.startupEvent(Date.now());

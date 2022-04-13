@@ -1,15 +1,22 @@
 // @flow
 import { CHANNEL_CREATION_LIMIT } from 'config';
 import { normalizeURI, parseURI, isURIValid } from 'util/lbryURI';
-import { selectYoutubeChannels } from 'redux/selectors/user';
+import { selectGeoBlockLists } from 'redux/selectors/blocked';
+import { selectUserLocale, selectYoutubeChannels } from 'redux/selectors/user';
 import { selectSupportsByOutpoint } from 'redux/selectors/wallet';
 import { createSelector } from 'reselect';
 import { createCachedSelector } from 're-reselect';
-import { isClaimNsfw, filterClaims, getChannelIdFromClaim, isStreamPlaceholderClaim } from 'util/claim';
+import {
+  isClaimNsfw,
+  filterClaims,
+  getChannelIdFromClaim,
+  isStreamPlaceholderClaim,
+  getThumbnailFromClaim,
+} from 'util/claim';
 import * as CLAIM from 'constants/claim';
 import { INTERNAL_TAGS } from 'constants/tags';
 
-type State = { claims: any };
+type State = { claims: any, user: UserState };
 
 const selectState = (state: State) => state.claims || {};
 
@@ -321,6 +328,11 @@ export const makeSelectTotalPagesInChannelSearch = (uri: string) =>
     return byChannel['pageCount'];
   });
 
+export const selectIsLivestreamClaimForUri = (state: State, uri: string) => {
+  const claim = selectClaimForUri(state, uri);
+  return isStreamPlaceholderClaim(claim);
+};
+
 export const selectMetadataForUri = (state: State, uri: string) => {
   const claim = selectClaimForUri(state, uri);
   const metadata = claim && claim.value;
@@ -379,14 +391,12 @@ export const makeSelectEffectiveAmountForUri = (uri: string) =>
 
 export const makeSelectContentTypeForUri = (uri: string) =>
   createSelector(makeSelectClaimForUri(uri), (claim) => {
+    const isLivestreamClaim = isStreamPlaceholderClaim(claim);
+    if (isLivestreamClaim) return 'livestream';
+
     const source = claim && claim.value && claim.value.source;
     return source ? source.media_type : undefined;
   });
-
-export const getThumbnailFromClaim = (claim: Claim) => {
-  const thumbnail = claim && claim.value && claim.value.thumbnail;
-  return thumbnail && thumbnail.url ? thumbnail.url.trim().replace(/^http:\/\//i, 'https://') : undefined;
-};
 
 export const selectThumbnailForUri = createCachedSelector(selectClaimForUri, (claim) => {
   return getThumbnailFromClaim(claim);
@@ -791,3 +801,78 @@ export const selectIsMyChannelCountOverLimit = createSelector(
     return false;
   }
 );
+
+/**
+ * Given a uri of a channel, check if there an Odysee membership value
+ * @param state
+ * @param uri
+ * @returns {*}
+ */
+export const selectOdyseeMembershipForUri = function (state: State, uri: string) {
+  const claim = selectClaimForUri(state, uri);
+
+  const uploaderChannelClaimId = getChannelIdFromClaim(claim);
+
+  // looks for the uploader id
+  if (uploaderChannelClaimId) {
+    const matchingMembershipOfUser =
+      state.user &&
+      state.user.odyseeMembershipsPerClaimIds &&
+      state.user.odyseeMembershipsPerClaimIds[uploaderChannelClaimId];
+
+    return matchingMembershipOfUser;
+  }
+
+  return undefined;
+};
+
+/**
+ * Given a uri of a channel, check if there an Odysee membership value
+ * @param state
+ * @param channelId
+ * @returns {*}
+ */
+export const selectOdyseeMembershipForChannelId = function (state: State, channelId: string) {
+  // looks for the uploader id
+  const matchingMembershipOfUser =
+    state.user && state.user.odyseeMembershipsPerClaimIds && state.user.odyseeMembershipsPerClaimIds[channelId];
+
+  return matchingMembershipOfUser;
+};
+
+export const selectGeoRestrictionForUri = createCachedSelector(
+  selectClaimForUri,
+  selectGeoBlockLists,
+  selectUserLocale,
+  (claim, geoBlockLists, locale: LocaleInfo) => {
+    if (locale && geoBlockLists && claim) {
+      const claimId: ?string = claim.claim_id;
+      const channelId: ?string = getChannelIdFromClaim(claim);
+
+      let geoConfig: ?GeoConfig;
+
+      // --- livestreams
+      if (isStreamPlaceholderClaim(claim) && geoBlockLists.livestreams) {
+        geoConfig = geoBlockLists.livestreams[channelId] || geoBlockLists.livestreams[claimId];
+      }
+      // --- videos (a.k.a everything else)
+      else if (geoBlockLists.videos) {
+        geoConfig = geoBlockLists.videos[channelId] || geoBlockLists.videos[claimId];
+      }
+
+      if (geoConfig) {
+        const specials = geoConfig.specials || [];
+        const countries = geoConfig.countries || [];
+        const continents = geoConfig.continents || [];
+
+        return (
+          specials.find((x: GeoRestriction) => x.id === 'EU-ONLY' && locale.is_eu_member) ||
+          countries.find((x: GeoRestriction) => x.id === locale.country) ||
+          continents.find((x: GeoRestriction) => x.id === locale.continent)
+        );
+      }
+    }
+
+    return null;
+  }
+)((state, uri) => String(uri));

@@ -116,7 +116,8 @@ ol {
     padding-bottom: var(--spacing-m);
 
     .claim__menu-button {
-      right: -8px;
+      // right: -8px;
+      right: 2px;
     }
   }
 }
@@ -391,6 +392,10 @@ img {
   text-align: center;
   padding: calc(var(--spacing-l) * 3) 0;
 }
+.empty--centered-tight {
+  text-align: center;
+  padding: var(--spacing-l) 0;
+}
 
 .qr-code {
   width: 134px;
@@ -619,6 +624,11 @@ img {
   }
 }
 
+.homePage-wrapper__section-title {
+  display: flex;
+  justify-content: space-between;
+}
+
 // The following wrapper classes are temporary to fix page specific issues
 .discoverPage-wrapper {
   .claim-preview__wrapper {
@@ -648,6 +658,44 @@ img {
         .icon {
           stroke: var(--color-primary);
         }
+      }
+    }
+  }
+}
+
+.followManage-wrapper {
+  @extend .discoverPage-wrapper;
+  .claim-list {
+    margin-top: var(--spacing-m);
+  }
+}
+
+.followManage-wrapper__activeSubs {
+  -moz-column-count: 2;
+  -moz-column-gap: var(--spacing-m);
+  -webkit-column-count: 2;
+  -webkit-column-gap: var(--spacing-m);
+  column-count: 2;
+  column-gap: var(--spacing-m);
+
+  @media (min-width: $breakpoint-small) {
+    .navigation-link {
+      &.navigation-link--with-thumbnail .button__content {
+        .channel-thumbnail {
+          @include handleChannelGif(2.25rem);
+        }
+      }
+    }
+
+    .navigation__subscription {
+      .claim-preview__title {
+        span {
+          font-size: var(--font-body);
+        }
+      }
+
+      .channel-name {
+        font-size: var(--font-small);
       }
     }
   }
@@ -937,7 +985,7 @@ img {
     .card__title-section {
       width: 100%;
       flex-wrap: wrap;
-      div:first-child {
+      div:first-child:not(.channel-thumbnail) {
         width: 100%;
         .card__subtitle {
           background-color: var(--color-header-background);
@@ -1021,6 +1069,10 @@ img {
 }
 
 .publishList-wrapper {
+  .help {
+    color: var(--color-text);
+  }
+
   @media (min-width: $breakpoint-small) {
     .claim-preview--collection-mine {
       height: unset;
@@ -1065,6 +1117,13 @@ img {
 }
 
 .repost-wrapper {
+  // Repost now uses a modal. Lock the width because the bid message
+  // keeps changing as you type the desired name.
+  min-width: var(--modal-width);
+  @media (max-width: $breakpoint-small) {
+    min-width: 100%;
+  }
+
   .claim-preview__wrapper {
     background-color: rgba(var(--color-header-background-base), 0.6);
     &:hover {
@@ -1085,16 +1144,6 @@ img {
   @media (max-width: $breakpoint-small) {
     padding: var(--spacing-s);
     padding-top: 0;
-
-    .card__main-actions {
-      .claim-preview__wrapper {
-        a {
-          .button__content {
-            align-items: unset;
-          }
-        }
-      }
-    }
   }
 }
 
@@ -1123,7 +1172,7 @@ img {
 
   .claim-preview__wrapper--channel {
     .claim-preview--channel {
-      a {
+      a.button:not(.tag) {
         .button__content {
           align-items: unset;
         }
@@ -1135,16 +1184,52 @@ img {
   }
 }
 
+.premium-wrapper {
+  .membership_title {
+    .comment__badge {
+      .icon {
+        margin-bottom: -6px;
+      }
+    }
+  }
+  .premium-option {
+    background-color: rgba(var(--color-header-background-base), 0.4);
+    border-radius: var(--border-radius);
+    padding: var(--spacing-m);
+    margin-bottom: var(--spacing-m);
+  }
+}
+
 // Temporary master classes
 .date_time {
   font-size: var(--font-xsmall);
 }
 .icon--ExternalLink {
   margin-top: -5px;
+  margin-left: 2px;
+  margin-left: var(--spacing-xxs) !important;
+}
+.markdown-preview {
+  .icon--ExternalLink {
+    flex-shrink: 0;
+    margin-bottom: -1px !important;
+    // margin-left:2px !important;
+  }
+}
+.comments {
+  .markdown-preview {
+    .claim-link {
+      width: 40%;
+      margin-top: var(--spacing-xs);
+      @media (max-width: $breakpoint-small) {
+        width: 100%;
+      }
+    }
+  }
 }
 .hide-ribbon {
   .claim-tile__repost-author {
-    // display: none;
+    display: none;
   }
 }
 .show-ribbon {
@@ -1167,6 +1252,11 @@ img {
   display: none;
 }
 
+input:-webkit-autofill,
+input:-webkit-autofill:focus {
+  transition: background-color 600000s 0s, color 600000s 0s;
+}
+
 // Remove tap focus on mobile devices
 input,
 textarea,
@@ -1176,8 +1266,14 @@ a {
   -webkit-tap-highlight-color: rgba(0, 0, 0, 0);
 }
 
+.video-js .vjs-volume-level {
+  &::before {
+    color: white !important;
+  }
+}
+
 // Temporary fix for focus-visible
-*:focus-visible:not(.modal):not(.card):not(.wunderbar__input):not(.menu__list):not(.menu__list--header):not(.button--secondary):not(.button-like):not(.button-dislike):not(select):not(input):not(textarea):not(video):not([data-reach-tab-panels]):not([data-reach-tabs]):not([data-reach-tab-panel]):not(.CodeMirror-code):not(.MuiModal-root):not(.MuiPaper-root):not(.card) {
+*:focus-visible:not(.modal):not(.card):not(.wunderbar__input):not(.menu__list):not(.menu__list--header):not(.button--secondary):not(.button-like):not(.button-dislike):not(select):not(input):not(textarea):not(video):not([data-reach-tab-panels]):not([data-reach-tabs]):not([data-reach-tab-panel]):not(.CodeMirror-code):not(.MuiModal-root):not(.MuiPaper-root):not(.card):not(#onetrust-banner-sdk) {
   background-color: rgba(var(--color-primary-dynamic), 0.2) !important;
   color: var(--color-text) !important;
   // outline: 2px solid var(--color-primary);

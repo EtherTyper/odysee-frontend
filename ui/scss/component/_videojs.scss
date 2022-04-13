@@ -140,11 +140,6 @@ $control-bar-icon-size: 0.8rem;
       transition: 0.1s;
     }
   }
-
-  &.vjs-user-active.vjs-playing {
-    .vjs-control-bar {
-    }
-  }
 }
 
 // Button glow
@@ -187,8 +182,9 @@ $control-bar-icon-size: 0.8rem;
 .vjs-mouse-display {
   color: white !important;
   background-color: lightgrey !important;
-  width: 8px !important;
-  margin-left: -5px !important;
+  background-color: white !important;
+  // width: 8px !important;
+  // margin-left: -5px !important;
 }
 
 .vjs_video_3_ima-ad-container {
@@ -259,6 +255,15 @@ button.vjs-big-play-button {
   display: none !important;
 }
 
+.vjs-big-play-centered {
+  .vjs-big-play-button {
+    left: calc(50% - 2.5rem) !important;
+    margin-left: unset !important;
+    top: calc(50% - 2.5rem) !important;
+    margin-top: unset !important;
+  }
+}
+
 // Rearrange icons
 .vjs-play-control {
   order: 1 !important;
@@ -272,33 +277,59 @@ button.vjs-big-play-button {
 .vjs-volume-panel {
   order: 4 !important;
 }
-.vjs-current-time {
+
+.vjs-seek-to-live-control {
   order: 5 !important;
 }
-.vjs-time-divider {
+
+.vjs-live-control {
+  order: 5 !important;
+  margin-left: 8px !important;
+}
+
+.vjs-current-time {
   order: 6 !important;
 }
-.vjs-duration {
+.vjs-time-divider {
   order: 7 !important;
 }
-.vjs-custom-control-spacer {
+.vjs-duration {
   order: 8 !important;
 }
-.vjs-button--autoplay-next {
+.vjs-custom-control-spacer {
   order: 9 !important;
 }
-.vjs-playback-rate {
+.vjs-button--autoplay-next {
   order: 10 !important;
 }
-.vjs-chromecast-button {
+.vjs-playback-rate {
   order: 11 !important;
 }
-.vjs-quality-selector {
+.vjs-chromecast-button {
   order: 12 !important;
 }
-.vjs-button--theater-mode {
+.vjs-quality-selector {
   order: 13 !important;
 }
-.vjs-fullscreen-control {
+.vjs-button--theater-mode {
   order: 14 !important;
+}
+.vjs-fullscreen-control {
+  order: 15 !important;
+}
+
+// livestream player
+.livestreamPlayer {
+  .vjs-current-time,
+  .vjs-duration,
+  .vjs-time-divider,
+  .vjs-button--theater-mode,
+  //.vjs-quality-selector,
+  //.vjs-chromecast-button,
+  .vjs-button--autoplay-next
+  //,.vjs-progress-control
+  {
+    // hiding progress control for now
+    display: none !important;
+  }
 }

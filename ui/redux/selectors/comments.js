@@ -16,7 +16,7 @@ import { isClaimNsfw, getChannelFromClaim } from 'util/claim';
 import { selectSubscriptionUris } from 'redux/selectors/subscriptions';
 import { getCommentsListTitle } from 'util/comments';
 
-type State = { claims: any, comments: CommentsState };
+type State = { claims: any, comments: CommentsState, user: UserState };
 
 const selectState = (state) => state.comments || {};
 
@@ -24,13 +24,16 @@ export const selectCommentsById = (state: State) => selectState(state).commentBy
 export const selectCommentIdsByClaimId = (state: State) => selectState(state).byId;
 export const selectIsFetchingComments = (state: State) => selectState(state).isLoading;
 export const selectIsFetchingCommentsById = (state: State) => selectState(state).isLoadingById;
-export const selectIsFetchingCommentsByParentId = (state: State) => selectState(state).isLoadingByParentId;
+const selectTotalCommentsById = (state: State) => selectState(state).totalCommentsById;
 export const selectIsFetchingReacts = (state: State) => selectState(state).isFetchingReacts;
 
 export const selectMyReacts = (state: State) => state.comments.myReactsByCommentId;
 export const selectMyReactsForComment = (state: State, commentIdChannelId: string) => {
   // @commentIdChannelId: Format = 'commentId:MyChannelId'
   return state.comments.myReactsByCommentId && state.comments.myReactsByCommentId[commentIdChannelId];
+};
+export const selectIsFetchingCommentsForParentId = (state: State, parentId: string) => {
+  return selectState(state).isLoadingByParentId[parentId];
 };
 
 export const selectOthersReacts = (state: State) => state.comments.othersReactsByCommentId;
@@ -336,17 +339,17 @@ export const makeSelectTotalReplyPagesForParentId = (parentId: string) =>
     return state.repliesTotalPagesByParentId[parentId] || 0;
   });
 
-export const makeSelectTotalCommentsCountForUri = (uri: string) =>
-  createSelector(selectState, selectCommentsByUri, (state, byUri) => {
-    const claimId = byUri[uri];
+export const selectTotalCommentsCountForUri = (state: State, uri: string) => {
+  const commentIdsByUri = selectCommentsByUri(state);
+  const totalCommentsById = selectTotalCommentsById(state);
+  const claimId = commentIdsByUri[uri];
+  return totalCommentsById[claimId] || 0;
+};
 
-    return state.totalCommentsById[claimId] || 0;
-  });
-
-export const makeSelectCommentsListTitleForUri = (uri: string) =>
-  createSelector(makeSelectTotalCommentsCountForUri(uri), (totalComments) => {
-    return getCommentsListTitle(totalComments);
-  });
+export const selectCommentsListTitleForUri = (state: State, uri: string) => {
+  const totalComments = selectTotalCommentsCountForUri(state, uri);
+  return getCommentsListTitle(totalComments);
+};
 
 // Personal list
 export const makeSelectChannelIsBlocked = (uri: string) =>

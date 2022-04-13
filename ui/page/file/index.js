@@ -13,10 +13,10 @@ import * as COLLECTIONS_CONSTS from 'constants/collections';
 import * as SETTINGS from 'constants/settings';
 import { selectCostInfoForUri, doFetchCostInfoForUri } from 'lbryinc';
 import { selectShowMatureContent, selectClientSetting } from 'redux/selectors/settings';
-import { makeSelectFileRenderModeForUri, makeSelectContentPositionForUri } from 'redux/selectors/content';
-import { makeSelectCommentsListTitleForUri, selectSettingsByChannelId } from 'redux/selectors/comments';
+import { makeSelectFileRenderModeForUri, selectContentPositionForUri } from 'redux/selectors/content';
+import { selectCommentsListTitleForUri, selectSettingsByChannelId } from 'redux/selectors/comments';
 import { DISABLE_COMMENTS_TAG } from 'constants/tags';
-import { doSetMobilePlayerDimensions } from 'redux/actions/app';
+import { doToggleAppDrawer } from 'redux/actions/app';
 import { getChannelIdFromClaim } from 'util/claim';
 
 import FilePage from './view';
@@ -43,8 +43,9 @@ const select = (state, props) => {
     isLivestream: selectIsStreamPlaceholderForUri(state, uri),
     hasCollectionById: Boolean(makeSelectCollectionForId(collectionId)(state)),
     collectionId,
-    position: makeSelectContentPositionForUri(uri)(state),
-    commentsListTitle: makeSelectCommentsListTitleForUri(uri)(state),
+    position: selectContentPositionForUri(state, uri),
+    audioVideoDuration: claim?.value?.video?.duration || claim?.value?.audio?.duration,
+    commentsListTitle: selectCommentsListTitleForUri(state, uri),
   };
 };
 
@@ -53,7 +54,7 @@ const perform = {
   doSetContentHistoryItem,
   doSetPrimaryUri,
   clearPosition,
-  doSetMobilePlayerDimensions,
+  doToggleAppDrawer,
 };
 
 export default withRouter(connect(select, perform)(FilePage));

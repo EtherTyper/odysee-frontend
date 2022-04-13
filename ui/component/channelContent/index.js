@@ -7,10 +7,10 @@ import {
   makeSelectTotalPagesInChannelSearch,
   selectClaimForUri,
 } from 'redux/selectors/claims';
+import { doResolveUris } from 'redux/actions/claims';
 import * as SETTINGS from 'constants/settings';
 import { makeSelectChannelIsMuted } from 'redux/selectors/blocked';
 import { withRouter } from 'react-router';
-import { selectUserVerifiedEmail } from 'redux/selectors/user';
 import { selectClientSetting, selectShowMatureContent } from 'redux/selectors/settings';
 import { doFetchChannelLiveStatus } from 'redux/actions/livestream';
 import { selectActiveLivestreamForChannel, selectActiveLivestreamInitialized } from 'redux/selectors/livestream';
@@ -31,7 +31,6 @@ const select = (state, props) => {
     channelIsMine: selectClaimIsMine(state, claim),
     channelIsBlocked: makeSelectChannelIsMuted(props.uri)(state),
     claim,
-    isAuthenticated: selectUserVerifiedEmail(state),
     showMature: selectShowMatureContent(state),
     tileLayout: selectClientSetting(state, SETTINGS.TILE_LAYOUT),
     activeLivestreamForChannel: selectActiveLivestreamForChannel(state, channelClaimId),
@@ -40,6 +39,7 @@ const select = (state, props) => {
 };
 
 const perform = (dispatch) => ({
+  doResolveUris: (uris, returnCachedUris) => dispatch(doResolveUris(uris, returnCachedUris)),
   doFetchChannelLiveStatus: (channelID) => dispatch(doFetchChannelLiveStatus(channelID)),
 });
 

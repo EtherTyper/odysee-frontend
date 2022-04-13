@@ -1,6 +1,6 @@
 import { connect } from 'react-redux';
-import { doUriInitiatePlay, doSetPlayingUri } from 'redux/actions/content';
-import { selectThumbnailForUri, selectClaimForUri, makeSelectClaimWasPurchased } from 'redux/selectors/claims';
+import { doUriInitiatePlay } from 'redux/actions/content';
+import { makeSelectClaimWasPurchased, selectClaimForUri } from 'redux/selectors/claims';
 import { makeSelectFileInfoForUri } from 'redux/selectors/file_info';
 import * as SETTINGS from 'constants/settings';
 import { selectCostInfoForUri } from 'lbryinc';
@@ -14,18 +14,21 @@ import {
   makeSelectFileRenderModeForUri,
 } from 'redux/selectors/content';
 import FileRenderInitiator from './view';
-import { getChannelIdFromClaim } from 'util/claim';
-import { selectActiveLivestreamForChannel } from 'redux/selectors/livestream';
+import { selectIsActiveLivestreamForUri } from 'redux/selectors/livestream';
+import { getThumbnailFromClaim, isStreamPlaceholderClaim } from 'util/claim';
+import { doFetchChannelLiveStatus } from 'redux/actions/livestream';
 
 const select = (state, props) => {
   const { uri } = props;
 
   const claim = selectClaimForUri(state, uri);
-  const claimId = claim && claim.claim_id;
-  const channelClaimId = claim && getChannelIdFromClaim(claim);
+  const { claim_id: claimId, signing_channel: channelClaim } = claim || {};
+  const { claim_id: channelClaimId } = channelClaim || {};
 
   return {
-    claimThumbnail: selectThumbnailForUri(state, uri),
+    claimId,
+    channelClaimId,
+    claimThumbnail: getThumbnailFromClaim(claim),
     fileInfo: makeSelectFileInfoForUri(uri)(state),
     obscurePreview: selectShouldObscurePreviewForUri(state, uri),
     isPlaying: makeSelectIsPlaying(uri)(state),
@@ -35,14 +38,14 @@ const select = (state, props) => {
     renderMode: makeSelectFileRenderModeForUri(uri)(state),
     claimWasPurchased: makeSelectClaimWasPurchased(uri)(state),
     authenticated: selectUserVerifiedEmail(state),
-    activeLivestreamForChannel: channelClaimId && selectActiveLivestreamForChannel(state, channelClaimId),
-    claimId,
+    isCurrentClaimLive: selectIsActiveLivestreamForUri(state, uri),
+    isLivestreamClaim: isStreamPlaceholderClaim(claim),
   };
 };
 
 const perform = {
   doUriInitiatePlay,
-  doSetPlayingUri,
+  doFetchChannelLiveStatus,
 };
 
 export default withRouter(connect(select, perform)(FileRenderInitiator));

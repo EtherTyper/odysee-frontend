@@ -143,6 +143,10 @@ function buildClaimOgMetadata(uri, claim, overrideOptions = {}, referrerQuery) {
   const mediaDuration = media && media.duration;
   const claimTitle = escapeHtmlProperty((value && value.title) || claimName);
   const releaseTime = (value && value.release_time) || (meta && meta.creation_timestamp) || 0;
+  const isStream = claim && claim.value_type === 'stream';
+  const liveStream = isStream && !source;
+  const mediaHeight = (media && media.height) || '720';
+  const mediaWidth = (media && media.width) || '1280';
 
   const claimDescription =
     value && value.description && value.description.length > 0
@@ -163,6 +167,19 @@ function buildClaimOgMetadata(uri, claim, overrideOptions = {}, referrerQuery) {
     getThumbnailCdnUrl(imageThumbnail) ||
     getThumbnailCdnUrl(OG_IMAGE_URL) ||
     `${URL}/public/v2-og.png`;
+
+  const getOgType = (streamType, liveStream) => {
+    if (liveStream) return 'video.other';
+    switch (streamType) {
+      // https://ogp.me/?fbclid=IwAR0Dr3Rb3tw1W5wjFtuRMZfwewM2vlrSnNp-_ZKlvCzo5nKuX2TuTqt0kU8#types
+      case 'video':
+        return 'video.other';
+      case 'audio':
+        return 'music.song';
+      default:
+        return 'website';
+    }
+  };
 
   // Allow for overriding default claim based og metadata
   const title = overrideOptions.title || claimTitle;
@@ -186,9 +203,10 @@ function buildClaimOgMetadata(uri, claim, overrideOptions = {}, referrerQuery) {
   head += `<meta name="twitter:site" content="@OdyseeTeam"/>`;
   head += `<meta property="og:description" content="${cleanDescription}"/>`;
   head += `<meta property="og:image" content="${claimThumbnail}"/>`;
+  head += `<meta property="og:image:secure_url" content="${claimThumbnail}"/>`;
   head += `<meta property="og:locale" content="${claimLanguage}"/>`;
   head += `<meta property="og:site_name" content="${SITE_NAME}"/>`;
-  head += `<meta property="og:type" content="website"/>`;
+  head += `<meta property="og:type" content="${getOgType(value?.stream_type, liveStream)}"/>`;
   head += `<meta property="og:title" content="${title}"/>`;
   head += `<meta name="twitter:title" content="${title}"/>`;
   head += `<meta property="og:url" content="${claimPath}"/>`;
@@ -202,11 +220,12 @@ function buildClaimOgMetadata(uri, claim, overrideOptions = {}, referrerQuery) {
     claimPath
   )}&format=xml${referrerQuery ? `&r=${encodeURIComponent(referrerQuery)}` : ''}" title="${title}" />`;
 
-  if (mediaType && (mediaType.startsWith('video/') || mediaType.startsWith('audio/'))) {
+  if ((mediaType && (mediaType.startsWith('video/') || mediaType.startsWith('audio/'))) || liveStream) {
     const videoUrl = generateEmbedUrl(claim.name, claim.claim_id);
     head += `<meta property="og:video" content="${videoUrl}" />`;
     head += `<meta property="og:video:secure_url" content="${videoUrl}" />`;
-    head += `<meta property="og:video:type" content="${mediaType}" />`;
+    // type text/html since we use embeds
+    head += `<meta property="og:video:type" content="text/html" />`;
     if (channel) {
       head += `<meta name="og:video:series" content="${channel}"/>`;
     }
@@ -219,12 +238,10 @@ function buildClaimOgMetadata(uri, claim, overrideOptions = {}, referrerQuery) {
     if (mediaDuration) {
       head += `<meta property="og:video:duration" content="${mediaDuration}"/>`;
     }
-    if (media && media.width && media.height) {
-      head += `<meta property="og:video:width" content="${media.width}"/>`;
-      head += `<meta property="og:video:height" content="${media.height}"/>`;
-      head += `<meta name="twitter:player:width" content="${media.width}">`;
-      head += `<meta name="twitter:player:height" content="${media.height}">`;
-    }
+    head += `<meta property="og:video:width" content="${mediaWidth}"/>`;
+    head += `<meta property="og:video:height" content="${mediaHeight}"/>`;
+    head += `<meta name="twitter:player:width" content="${mediaWidth}">`;
+    head += `<meta name="twitter:player:height" content="${mediaHeight}">`;
   } else {
     head += `<meta name="twitter:card" content="summary_large_image"/>`;
   }

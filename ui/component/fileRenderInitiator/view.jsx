@@ -9,13 +9,16 @@ import classnames from 'classnames';
 import * as PAGES from 'constants/pages';
 import * as RENDER_MODES from 'constants/file_render_modes';
 import Button from 'component/button';
-import { getThumbnailCdnUrl } from 'util/thumbnail';
 import Nag from 'component/common/nag';
-// $FlowFixMe cannot resolve ...
-import FileRenderPlaceholder from 'static/img/fileRenderPlaceholder.png';
 import * as COLLECTIONS_CONSTS from 'constants/collections';
+import { LivestreamContext } from 'page/livestream/view';
+import { formatLbryUrlForWeb } from 'util/url';
+import FileViewerEmbeddedTitle from 'component/fileViewerEmbeddedTitle';
+import useFetchLiveStatus from 'effects/use-fetch-live';
+import useThumbnail from 'effects/use-thumbnail';
 
 type Props = {
+  channelClaimId: ?string,
   isPlaying: boolean,
   fileInfo: FileListItem,
   uri: string,
@@ -31,14 +34,19 @@ type Props = {
   claimWasPurchased: boolean,
   authenticated: boolean,
   videoTheaterMode: boolean,
-  activeLivestreamForChannel?: any,
-  claimId?: string,
-  doUriInitiatePlay: (uri: string, collectionId: ?string, isPlayable: boolean) => void,
-  doSetPlayingUri: ({ uri: ?string }) => void,
+  isCurrentClaimLive?: boolean,
+  isLivestreamClaim: boolean,
+  customAction?: any,
+  embedded?: boolean,
+  parentCommentId?: string,
+  isMarkdownPost?: boolean,
+  doUriInitiatePlay: (playingOptions: PlayingUri, isPlayable: boolean) => void,
+  doFetchChannelLiveStatus: (string) => void,
 };
 
 export default function FileRenderInitiator(props: Props) {
   const {
+    channelClaimId,
     isPlaying,
     fileInfo,
     uri,
@@ -53,89 +61,89 @@ export default function FileRenderInitiator(props: Props) {
     claimWasPurchased,
     authenticated,
     videoTheaterMode,
-    activeLivestreamForChannel,
-    claimId,
+    isCurrentClaimLive,
+    isLivestreamClaim,
+    customAction,
+    embedded,
+    parentCommentId,
+    isMarkdownPost,
     doUriInitiatePlay,
-    doSetPlayingUri,
+    doFetchChannelLiveStatus,
   } = props;
 
-  const containerRef = React.useRef<any>();
+  const { livestreamPage, layountRendered } = React.useContext(LivestreamContext) || {};
 
   const isMobile = useIsMobile();
 
-  const [thumbnail, setThumbnail] = React.useState(FileRenderPlaceholder);
+  const containerRef = React.useRef<any>();
 
-  const { search, href, state: locationState } = location;
+  const { search, href, state: locationState, pathname } = location;
   const urlParams = search && new URLSearchParams(search);
   const collectionId = urlParams && urlParams.get(COLLECTIONS_CONSTS.COLLECTION_ID);
 
   // check if there is a time or autoplay parameter, if so force autoplay
   const urlTimeParam = href && href.indexOf('t=') > -1;
   const forceAutoplayParam = locationState && locationState.forceAutoplay;
-  const shouldAutoplay = forceAutoplayParam || urlTimeParam || autoplay;
+  const shouldAutoplay = !embedded && (forceAutoplayParam || urlTimeParam || autoplay);
 
   const isFree = costInfo && costInfo.cost === 0;
-  const canViewFile = isFree || claimWasPurchased;
-  const isPlayable = RENDER_MODES.FLOATING_MODES.includes(renderMode);
+  const canViewFile = isLivestreamClaim
+    ? (layountRendered || isMobile) && isCurrentClaimLive
+    : isFree || claimWasPurchased;
+  const isPlayable = RENDER_MODES.FLOATING_MODES.includes(renderMode) || isCurrentClaimLive;
   const isText = RENDER_MODES.TEXT_MODES.includes(renderMode);
-  const isCurrentClaimLive = activeLivestreamForChannel && claimId && activeLivestreamForChannel.claimId === claimId;
-  const isMobileClaimLive = isMobile && isCurrentClaimLive;
-  const foundCover = thumbnail !== FileRenderPlaceholder;
 
   const renderUnsupported = RENDER_MODES.UNSUPPORTED_IN_THIS_APP.includes(renderMode);
-  const disabled = renderUnsupported || (!fileInfo && insufficientCredits && !claimWasPurchased);
+  const disabled =
+    (isLivestreamClaim && !isCurrentClaimLive) ||
+    renderUnsupported ||
+    (!fileInfo && insufficientCredits && !claimWasPurchased);
   const shouldRedirect = !authenticated && !isFree;
 
-  React.useEffect(() => {
-    // Set livestream as playing uri so it can be rendered by <FileRenderMobile />
-    // instead of showing an empty cover image. Needs cover to fill the space with the player.
-    if (isMobileClaimLive && foundCover) {
-      doSetPlayingUri({ uri });
-    }
-  }, [doSetPlayingUri, foundCover, isMobileClaimLive, uri]);
-
   function doAuthRedirect() {
-    history.push(`/$/${PAGES.AUTH}?redirect=${encodeURIComponent(location.pathname)}`);
+    history.push(`/$/${PAGES.AUTH}?redirect=${encodeURIComponent(pathname)}`);
   }
 
-  React.useEffect(() => {
-    if (!claimThumbnail) return;
+  useFetchLiveStatus(livestreamPage ? undefined : channelClaimId, doFetchChannelLiveStatus);
 
-    setTimeout(() => {
-      let newThumbnail = claimThumbnail;
+  const thumbnail = useThumbnail(claimThumbnail, containerRef);
 
-      if (
-        containerRef.current &&
-        containerRef.current.parentElement &&
-        containerRef.current.parentElement.offsetWidth
-      ) {
-        const w = containerRef.current.parentElement.offsetWidth;
-        newThumbnail = getThumbnailCdnUrl({ thumbnail: newThumbnail, width: w, height: w });
-      }
-
-      if (newThumbnail !== thumbnail) {
-        setThumbnail(newThumbnail);
-      }
-    }, 200);
-  }, [claimThumbnail, thumbnail]);
+  function handleClick() {
+    if (embedded && !isPlayable) {
+      const formattedUrl = formatLbryUrlForWeb(uri);
+      history.push(formattedUrl);
+    } else {
+      viewFile();
+    }
+  }
 
   // Wrap this in useCallback because we need to use it to the view effect
   // If we don't a new instance will be created for every render and react will think the dependencies have changed, which will add/remove the listener for every render
   const viewFile = React.useCallback(() => {
-    doUriInitiatePlay(uri, collectionId, isPlayable);
-  }, [collectionId, doUriInitiatePlay, isPlayable, uri]);
+    const playingOptions = { uri, collectionId, pathname, source: undefined, commentId: undefined };
+
+    if (parentCommentId) {
+      playingOptions.source = 'comment';
+      playingOptions.commentId = parentCommentId;
+    } else if (isMarkdownPost) {
+      playingOptions.source = 'markdown';
+    }
+
+    doUriInitiatePlay(playingOptions, isPlayable);
+  }, [collectionId, doUriInitiatePlay, isMarkdownPost, isPlayable, parentCommentId, pathname, uri]);
 
   React.useEffect(() => {
-    const videoOnPage = document.querySelector('video');
+    // avoid selecting 'video' anymore -> can cause conflicts with Ad popup videos
+    const videoOnPage = document.querySelector('.vjs-tech');
 
     if (
       (canViewFile || forceAutoplayParam) &&
       ((shouldAutoplay && (!videoOnPage || forceAutoplayParam) && isPlayable) ||
-        RENDER_MODES.AUTO_RENDER_MODES.includes(renderMode))
+        (!embedded && RENDER_MODES.AUTO_RENDER_MODES.includes(renderMode)))
     ) {
       viewFile();
     }
-  }, [canViewFile, forceAutoplayParam, isPlayable, renderMode, shouldAutoplay, viewFile]);
+  }, [canViewFile, embedded, forceAutoplayParam, isPlayable, renderMode, shouldAutoplay, viewFile]);
 
   /*
   once content is playing, let the appropriate <FileRender> take care of it...
@@ -148,15 +156,21 @@ export default function FileRenderInitiator(props: Props) {
   return (
     <div
       ref={containerRef}
-      onClick={disabled || isMobileClaimLive ? undefined : shouldRedirect ? doAuthRedirect : viewFile}
+      onClick={disabled ? undefined : shouldRedirect ? doAuthRedirect : handleClick}
       style={thumbnail && !obscurePreview ? { backgroundImage: `url("${thumbnail}")` } : {}}
-      className={classnames('content__cover', {
-        'content__cover--disabled': disabled,
-        'content__cover--theater-mode': videoTheaterMode,
-        'content__cover--text': isText,
-        'card__media--nsfw': obscurePreview,
-      })}
+      className={
+        embedded
+          ? 'embed__inline-button'
+          : classnames('content__cover', {
+              'content__cover--disabled': disabled,
+              'content__cover--theater-mode': videoTheaterMode && !isMobile,
+              'content__cover--text': isText,
+              'card__media--nsfw': obscurePreview,
+            })
+      }
     >
+      {embedded && <FileViewerEmbeddedTitle uri={uri} isInApp />}
+
       {renderUnsupported ? (
         <Nag
           type="helpful"
@@ -178,10 +192,10 @@ export default function FileRenderInitiator(props: Props) {
         )
       )}
 
-      {!disabled && !isMobileClaimLive && (
+      {(!disabled || (embedded && isLivestreamClaim)) && (
         <Button
           requiresAuth={shouldRedirect}
-          onClick={viewFile}
+          onClick={handleClick}
           iconSize={30}
           title={isPlayable ? __('Play') : __('View')}
           className={classnames('button--icon', {
@@ -190,6 +204,8 @@ export default function FileRenderInitiator(props: Props) {
           })}
         />
       )}
+
+      {customAction}
     </div>
   );
 }

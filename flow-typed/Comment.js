@@ -37,6 +37,7 @@ declare type PerChannelSettings = {
   min_tip_amount_comment?: number,
   min_tip_amount_super_chat?: number,
   slow_mode_min_gap?: number,
+  time_since_first_comment?: number,
 };
 
 // todo: relate individual comments to their commentId
@@ -147,10 +148,10 @@ declare type CommentListParams = {
   channel_name?: string, // signing channel name of claim (enables 'commentsEnabled' check)
   channel_id?: string, // signing channel claim id of claim (enables 'commentsEnabled' check)
   author_claim_id?: string, // filters comments to just this author
-  parent_id?: string, // filters comments to those under this thread
+  parent_id?: ?string, // filters comments to those under this thread
   top_level?: boolean, // filters to only top level comments
   hidden?: boolean, // if true, will show hidden comments as well
-  sort_by?: number, // @see: ui/constants/comments.js::SORT_BY
+  sort_by?: ?number, // @see: ui/constants/comments.js::SORT_BY
 };
 
 declare type CommentListResponse = {
@@ -318,6 +319,7 @@ declare type UpdateSettingsParams = {
   min_tip_amount_comment?: number,
   min_tip_amount_super_chat?: number,
   slow_mode_min_gap?: number,
+  time_since_first_comment?: number,
 };
 
 declare type BlockWordParams = {

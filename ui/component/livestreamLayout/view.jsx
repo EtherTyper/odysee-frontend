@@ -1,21 +1,18 @@
 // @flow
 import 'scss/component/_swipeable-drawer.scss';
 
-// $FlowFixMe
-import { Global } from '@emotion/react';
-
 import { lazyImport } from 'util/lazyImport';
-import { useIsMobile } from 'effects/use-screensize';
+import { useIsMobile, useIsMobileLandscape } from 'effects/use-screensize';
 import { Menu, MenuList, MenuButton, MenuItem } from '@reach/menu-button';
 import FileTitleSection from 'component/fileTitleSection';
 import LivestreamLink from 'component/livestreamLink';
 import React from 'react';
 import { PRIMARY_PLAYER_WRAPPER_CLASS } from 'page/file/view';
 import FileRenderInitiator from 'component/fileRenderInitiator';
-import LivestreamIframeRender from './iframe-render';
+import LivestreamScheduledInfo from 'component/livestreamScheduledInfo';
 import * as ICONS from 'constants/icons';
 import SwipeableDrawer from 'component/swipeableDrawer';
-import { DrawerExpandButton } from 'component/swipeableDrawer/view';
+import DrawerExpandButton from 'component/swipeableDrawerExpand';
 import LivestreamMenu from 'component/livestreamChatLayout/livestream-menu';
 import Icon from 'component/common/icon';
 import CreditAmount from 'component/common/credit-amount';
@@ -33,7 +30,7 @@ type Props = {
   claim: ?StreamClaim,
   hideComments: boolean,
   isCurrentClaimLive: boolean,
-  release: any,
+  releaseTimeMs: number,
   showLivestream: boolean,
   showScheduledInfo: boolean,
   uri: string,
@@ -47,7 +44,7 @@ export default function LivestreamLayout(props: Props) {
     claim,
     hideComments,
     isCurrentClaimLive,
-    release,
+    releaseTimeMs,
     showLivestream,
     showScheduledInfo,
     uri,
@@ -56,35 +53,28 @@ export default function LivestreamLayout(props: Props) {
   } = props;
 
   const isMobile = useIsMobile();
+  const isLandscapeRotated = useIsMobileLandscape();
 
-  const [showChat, setShowChat] = React.useState(undefined);
   const [superchatsHidden, setSuperchatsHidden] = React.useState(false);
   const [chatViewMode, setChatViewMode] = React.useState(VIEW_MODES.CHAT);
 
   if (!claim || !claim.signing_channel) return null;
 
-  const { name: channelName, claim_id: channelClaimId } = claim.signing_channel;
+  const { name: channelName } = claim.signing_channel;
+
+  // TODO: use this to show the 'user is not live functionality'
+  // console.log('show livestream, currentclaimlive, activestreamurl');
+  // console.log(showLivestream, isCurrentClaimLive, activeStreamUri);
 
   return (
     <>
-      {!isMobile && <GlobalStyles />}
-
       <div className="section card-stack">
-        <React.Suspense fallback={null}>
-          {isMobile && isCurrentClaimLive ? (
-            <div className={PRIMARY_PLAYER_WRAPPER_CLASS}>
-              {/* Mobile needs to handle the livestream player like any video player */}
-              <FileRenderInitiator uri={uri} />
-            </div>
-          ) : (
-            <LivestreamIframeRender
-              channelClaimId={channelClaimId}
-              release={release}
-              showLivestream={showLivestream}
-              showScheduledInfo={showScheduledInfo}
-            />
-          )}
-        </React.Suspense>
+        <div className={PRIMARY_PLAYER_WRAPPER_CLASS}>
+          <FileRenderInitiator
+            uri={claim.canonical_url}
+            customAction={showScheduledInfo && <LivestreamScheduledInfo releaseTimeMs={releaseTimeMs} />}
+          />
+        </div>
 
         {hideComments && !showScheduledInfo && (
           <div className="help--notice">
@@ -104,18 +94,16 @@ export default function LivestreamLayout(props: Props) {
           </div>
         )}
 
-        {activeStreamUri && (
+        {activeStreamUri !== uri && (
           <LivestreamLink
             title={__("Click here to access the stream that's currently active")}
             claimUri={activeStreamUri}
           />
         )}
 
-        {isMobile && !hideComments && (
+        {isMobile && !isLandscapeRotated && !hideComments && (
           <React.Suspense fallback={null}>
             <SwipeableDrawer
-              open={Boolean(showChat)}
-              toggleDrawer={() => setShowChat(!showChat)}
               title={
                 <ChatModeSelector
                   superChats={superChats}
@@ -143,7 +131,7 @@ export default function LivestreamLayout(props: Props) {
               />
             </SwipeableDrawer>
 
-            <DrawerExpandButton label={__('Open Live Chat')} toggleDrawer={() => setShowChat(!showChat)} />
+            <DrawerExpandButton label={__('Open Live Chat')} />
           </React.Suspense>
         )}
 
@@ -204,18 +192,3 @@ const ChatDrawerTitle = (titleProps: any) => {
     </div>
   );
 };
-
-const GlobalStyles = () => (
-  <Global
-    styles={{
-      body: {
-        'scrollbar-width': '0px',
-
-        '&::-webkit-scrollbar': {
-          width: '0px',
-          height: '0px',
-        },
-      },
-    }}
-  />
-);

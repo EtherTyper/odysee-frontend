@@ -1,6 +1,6 @@
 // @flow
 import * as PAGES from 'constants/pages';
-import React, { useEffect, useRef, useState, useLayoutEffect } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { lazyImport } from 'util/lazyImport';
 import { tusUnlockAndNotify, tusHandleTabUpdates } from 'util/tus';
 import classnames from 'classnames';
@@ -15,8 +15,8 @@ import { openContextMenu } from 'util/context-menu';
 import useKonamiListener from 'util/enhanced-layout';
 import Yrbl from 'component/yrbl';
 import FileRenderFloating from 'component/fileRenderFloating';
-import FileRenderMobile from 'component/fileRenderMobile';
 import { withRouter } from 'react-router';
+import useAdOutbrain from 'effects/use-ad-outbrain';
 import usePrevious from 'effects/use-previous';
 import Nag from 'component/common/nag';
 import REWARDS from 'rewards';
@@ -34,9 +34,12 @@ import {
 } from 'web/effects/use-degraded-performance';
 import LANGUAGE_MIGRATIONS from 'constants/language-migrations';
 import { useIsMobile } from 'effects/use-screensize';
+import getLanguagesForCountry from 'constants/country_languages';
+import SUPPORTED_LANGUAGES from 'constants/supported_languages';
 
 const FileDrop = lazyImport(() => import('component/fileDrop' /* webpackChunkName: "fileDrop" */));
 const NagContinueFirstRun = lazyImport(() => import('component/nagContinueFirstRun' /* webpackChunkName: "nagCFR" */));
+const NagLocaleSwitch = lazyImport(() => import('component/nagLocaleSwitch' /* webpackChunkName: "nagLocaleSwitch" */));
 const OpenInAppLink = lazyImport(() => import('web/component/openInAppLink' /* webpackChunkName: "openInAppLink" */));
 const NagDataCollection = lazyImport(() => import('web/component/nag-data-collection' /* webpackChunkName: "nagDC" */));
 const NagDegradedPerformance = lazyImport(() =>
@@ -59,8 +62,9 @@ type Props = {
   languages: Array<string>,
   theme: string,
   user: ?{ id: string, has_verified_email: boolean, is_reward_approved: boolean },
+  locale: ?LocaleInfo,
   location: { pathname: string, hash: string, search: string },
-  history: { push: (string) => void },
+  history: { push: (string) => void, location: { pathname: string } },
   fetchChannelListMine: () => void,
   fetchCollectionListMine: () => void,
   signIn: () => void,
@@ -81,18 +85,19 @@ type Props = {
   syncFatalError: boolean,
   activeChannelClaim: ?ChannelClaim,
   myChannelClaimIds: ?Array<string>,
-  subscriptions: Array<Subscription>,
+  hasPremiumPlus: ?boolean,
   setActiveChannelIfNotSet: () => void,
   setIncognito: (boolean) => void,
   fetchModBlockedList: () => void,
-  resolveUris: (Array<string>) => void,
   fetchModAmIList: () => void,
+  homepageFetched: boolean,
 };
 
 function App(props: Props) {
   const {
     theme,
     user,
+    locale,
     fetchChannelListMine,
     fetchCollectionListMine,
     signIn,
@@ -118,9 +123,9 @@ function App(props: Props) {
     setActiveChannelIfNotSet,
     setIncognito,
     fetchModBlockedList,
-    resolveUris,
-    subscriptions,
+    hasPremiumPlus,
     fetchModAmIList,
+    homepageFetched,
   } = props;
 
   const isMobile = useIsMobile();
@@ -132,14 +137,15 @@ function App(props: Props) {
   const previousHasVerifiedEmail = usePrevious(hasVerifiedEmail);
   const previousRewardApproved = usePrevious(isRewardApproved);
 
+  const [localeLangs, setLocaleLangs] = React.useState();
+  const [localeSwitchDismissed] = usePersistedState('locale-switch-dismissed', false);
   const [showAnalyticsNag, setShowAnalyticsNag] = usePersistedState('analytics-nag', true);
   const [lbryTvApiStatus, setLbryTvApiStatus] = useState(STATUS_OK);
 
   const { pathname, hash, search } = props.location;
   const [upgradeNagClosed, setUpgradeNagClosed] = useState(false);
-  const [resolvedSubscriptions, setResolvedSubscriptions] = useState(false);
   const [retryingSync, setRetryingSync] = useState(false);
-  const [sidebarOpen] = usePersistedState('sidebar', true);
+  const [langRenderKey, setLangRenderKey] = useState(0);
   const [seenSunsestMessage, setSeenSunsetMessage] = usePersistedState('lbrytv-sunset', false);
   const showUpgradeButton =
     (autoUpdateDownloaded || (process.platform === 'linux' && isUpgradeAvailable)) && !upgradeNagClosed;
@@ -149,13 +155,13 @@ function App(props: Props) {
   const rawReferrerParam = urlParams.get('r');
   const fromLbrytvParam = urlParams.get('sunset');
   const sanitizedReferrerParam = rawReferrerParam && rawReferrerParam.replace(':', '#');
-  const shouldHideNag = pathname.startsWith(`/$/${PAGES.EMBED}`) || pathname.startsWith(`/$/${PAGES.AUTH_VERIFY}`);
+  const embedPath = pathname.startsWith(`/$/${PAGES.EMBED}`);
+  const shouldHideNag = embedPath || pathname.startsWith(`/$/${PAGES.AUTH_VERIFY}`);
   const userId = user && user.id;
   const hasMyChannels = myChannelClaimIds && myChannelClaimIds.length > 0;
   const hasNoChannels = myChannelClaimIds && myChannelClaimIds.length === 0;
   const shouldMigrateLanguage = LANGUAGE_MIGRATIONS[language];
   const hasActiveChannelClaim = activeChannelClaim !== undefined;
-  const isPersonalized = !IS_WEB || hasVerifiedEmail;
   const renderFiledrop = !isMobile && isAuthenticated;
   const connectionStatus = useConnectionStatus();
 
@@ -210,6 +216,11 @@ function App(props: Props) {
           onClick={() => window.location.reload()}
         />
       );
+    }
+
+    if (localeLangs && !embedPath && !localeSwitchDismissed && homepageFetched) {
+      const noLanguageSet = language === 'en' && languages.length === 1;
+      return <NagLocaleSwitch localeLangs={localeLangs} noLanguageSet={noLanguageSet} onFrontPage={pathname === '/'} />;
     }
   }
 
@@ -311,6 +322,7 @@ function App(props: Props) {
       fetchModBlockedList();
       fetchModAmIList();
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [hasMyChannels, hasNoChannels, hasActiveChannelClaim, setActiveChannelIfNotSet, setIncognito]);
 
   useEffect(() => {
@@ -375,7 +387,7 @@ function App(props: Props) {
       }
     }
 
-    if (inIframe()) {
+    if (inIframe() || !locale || !locale.gdpr_required) {
       return;
     }
 
@@ -395,40 +407,10 @@ function App(props: Props) {
     // OneTrust asks to add this
     secondScript.innerHTML = 'function OptanonWrapper() { }';
 
-    const getLocaleEndpoint = 'https://api.odysee.com/locale/get';
-    let gdprRequired;
-    try {
-      gdprRequired = localStorage.getItem('gdprRequired');
-    } catch (err) {
-      if (err) return;
-    }
-    // gdpr is known to be required, add script
-    if (gdprRequired === 'true') {
-      // $FlowFixMe
-      document.head.appendChild(script);
-      // $FlowFixMe
-      document.head.appendChild(secondScript);
-    }
-
-    // haven't done a gdpr check, do it now
-    if (gdprRequired === null) {
-      (async function () {
-        const response = await fetch(getLocaleEndpoint);
-        const json = await response.json();
-        const gdprRequiredBasedOnLocation = json.data.gdpr_required;
-        // note we need gdpr and load script
-        if (gdprRequiredBasedOnLocation) {
-          localStorage.setItem('gdprRequired', 'true');
-          // $FlowFixMe
-          document.head.appendChild(script);
-          // $FlowFixMe
-          document.head.appendChild(secondScript);
-          // note we don't need gdpr, save to session
-        } else if (gdprRequiredBasedOnLocation === false) {
-          localStorage.setItem('gdprRequired', 'false');
-        }
-      })();
-    }
+    // $FlowFixMe
+    document.head.appendChild(script);
+    // $FlowFixMe
+    document.head.appendChild(secondScript);
 
     return () => {
       try {
@@ -437,10 +419,24 @@ function App(props: Props) {
         // $FlowFixMe
         document.head.removeChild(secondScript);
       } catch (err) {
-        console.log(err);
+        // eslint-disable-next-line no-console
+        // console.log(err); <-- disabling this ... it's clogging up Sentry logs.
       }
     };
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps, (one time after locale is fetched)
+  }, [locale]);
+
+  React.useEffect(() => {
+    if (locale) {
+      const countryCode = locale.country;
+      const langs = getLanguagesForCountry(countryCode) || [];
+      const supportedLangs = langs.filter((lang) => lang !== 'en' && SUPPORTED_LANGUAGES[lang]);
+
+      if (supportedLangs.length > 0) {
+        setLocaleLangs(supportedLangs);
+      }
+    }
+  }, [locale]);
 
   // ready for sync syncs, however after signin when hasVerifiedEmail, that syncs too.
   useEffect(() => {
@@ -471,17 +467,14 @@ function App(props: Props) {
     }
   }, [hasVerifiedEmail, signIn, hasSignedIn]);
 
-  // batch resolve subscriptions to be used by the sideNavigation component.
-  // add it here so that it only resolves the first time, despite route changes.
-  // useLayoutEffect because it has to be executed before the sideNavigation component requests them
-  useLayoutEffect(() => {
-    if (sidebarOpen && isPersonalized && subscriptions && !resolvedSubscriptions) {
-      setResolvedSubscriptions(true);
-      resolveUris(subscriptions.map((sub) => sub.uri));
-    }
-  }, [sidebarOpen, isPersonalized, resolvedSubscriptions, subscriptions, resolveUris, setResolvedSubscriptions]);
-
   useDegradedPerformance(setLbryTvApiStatus, user);
+
+  useAdOutbrain(Boolean(hasPremiumPlus), isAuthenticated, history?.location?.pathname);
+
+  useEffect(() => {
+    // When language is changed or translations are fetched, we render.
+    setLangRenderKey(Date.now());
+  }, [language, languages]);
 
   // Require an internal-api user on lbry.tv
   // This also prevents the site from loading in the un-authed state while we wait for internal-apis to return for the first time
@@ -511,6 +504,7 @@ function App(props: Props) {
         // @endif
       })}
       ref={appRef}
+      key={langRenderKey}
       onContextMenu={IS_WEB ? undefined : (e) => openContextMenu(e)}
     >
       {IS_WEB && lbryTvApiStatus === STATUS_DOWN ? (
@@ -524,7 +518,9 @@ function App(props: Props) {
           <Router />
           <ModalRouter />
           <React.Suspense fallback={null}>{renderFiledrop && <FileDrop />}</React.Suspense>
-          {isMobile ? <FileRenderMobile /> : <FileRenderFloating />}
+
+          <FileRenderFloating />
+
           <React.Suspense fallback={null}>
             {isEnhancedLayout && <Yrbl className="yrbl--enhanced" />}
 

@@ -2,6 +2,7 @@
 import React from 'react';
 import classnames from 'classnames';
 import { NavLink, withRouter } from 'react-router-dom';
+import ClaimPreviewProgress from 'component/claimPreviewProgress';
 import FileThumbnail from 'component/fileThumbnail';
 import UriIndicator from 'component/uriIndicator';
 import TruncatedText from 'component/common/truncated-text';
@@ -16,10 +17,12 @@ import { formatClaimPreviewTitle } from 'util/formatAriaLabel';
 import { parseURI } from 'util/lbryURI';
 import PreviewOverlayProperties from 'component/previewOverlayProperties';
 import FileDownloadLink from 'component/fileDownloadLink';
+import FileHideRecommendation from 'component/fileHideRecommendation';
 import FileWatchLaterLink from 'component/fileWatchLaterLink';
 import ClaimRepostAuthor from 'component/claimRepostAuthor';
 import ClaimMenuList from 'component/claimMenuList';
 import CollectionPreviewOverlay from 'component/collectionPreviewOverlay';
+import { FYP_ID } from 'constants/urlParams';
 // $FlowFixMe cannot resolve ...
 import PlaceholderTx from 'static/img/placeholderTx.gif';
 
@@ -42,6 +45,7 @@ type Props = {
   showHiddenByUser?: boolean,
   properties?: (Claim) => void,
   collectionId?: string,
+  fypId?: string,
   showNoSourceClaims?: boolean,
   isLivestream: boolean,
   viewCount: string,
@@ -72,6 +76,7 @@ function ClaimPreviewTile(props: Props) {
     isLivestream,
     isLivestreamActive,
     collectionId,
+    fypId,
     mediaDuration,
     viewCount,
     swipeLayout = false,
@@ -95,7 +100,9 @@ function ClaimPreviewTile(props: Props) {
   const repostedContentUri = claim && (claim.reposted_claim ? claim.reposted_claim.permanent_url : claim.permanent_url);
   const listId = collectionId || collectionClaimId;
   const navigateUrl =
-    formatLbryUrlForWeb(canonicalUrl || uri || '/') + (listId ? generateListSearchUrlParams(listId) : '');
+    formatLbryUrlForWeb(canonicalUrl || uri || '/') +
+    (listId ? generateListSearchUrlParams(listId) : '') +
+    (fypId ? `?${FYP_ID}=${fypId}` : ''); // sigh...
   const navLinkProps = {
     to: navigateUrl,
     onClick: (e) => e.stopPropagation(),
@@ -152,7 +159,11 @@ function ClaimPreviewTile(props: Props) {
 
   if (placeholder || (!claim && isResolvingUri)) {
     return (
-      <li className={classnames('placeholder claim-preview--tile', {})}>
+      <li
+        className={classnames('placeholder claim-preview--tile', {
+          'swipe-list__item claim-preview--horizontal-tile': swipeLayout,
+        })}
+      >
         <div className="media__thumb">
           <img src={PlaceholderTx} alt="Placeholder" />
         </div>
@@ -196,15 +207,20 @@ function ClaimPreviewTile(props: Props) {
               <div className="claim-preview__hover-actions">
                 {isPlayable && <FileWatchLaterLink focusable={false} uri={repostedContentUri} />}
               </div>
+              {fypId && (
+                <div className="claim-preview__hover-actions">
+                  {isStream && <FileHideRecommendation focusable={false} uri={repostedContentUri} />}
+                </div>
+              )}
               {/* @if TARGET='app' */}
               <div className="claim-preview__hover-actions">
                 {isStream && <FileDownloadLink focusable={false} uri={canonicalUrl} hideOpenButton />}
               </div>
               {/* @endif */}
-
               <div className="claim-preview__file-property-overlay">
                 <PreviewOverlayProperties uri={uri} properties={liveProperty || properties} />
               </div>
+              <ClaimPreviewProgress uri={uri} />
             </React.Fragment>
           )}
           {isCollection && (
@@ -227,7 +243,7 @@ function ClaimPreviewTile(props: Props) {
             )}
           </h2>
         </NavLink>
-        <ClaimMenuList uri={uri} collectionId={listId} channelUri={channelUri} />
+        <ClaimMenuList uri={uri} collectionId={listId} fypId={fypId} channelUri={channelUri} />
       </div>
       <div>
         <div
@@ -243,7 +259,7 @@ function ClaimPreviewTile(props: Props) {
           ) : (
             <React.Fragment>
               <UriIndicator focusable={false} uri={uri} link hideAnonymous>
-                <ChannelThumbnail uri={channelUri} xsmall />
+                <ChannelThumbnail uri={channelUri} xsmall checkMembership={false} />
               </UriIndicator>
 
               <div className="claim-tile__about">

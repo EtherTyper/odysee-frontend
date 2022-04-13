@@ -30,6 +30,7 @@ import OptimizedImage from 'component/optimizedImage';
 import { getChannelFromClaim } from 'util/claim';
 import { parseSticker } from 'util/comments';
 import { useIsMobile } from 'effects/use-screensize';
+import PremiumBadge from 'component/common/premium-badge';
 
 const AUTO_EXPAND_ALL_REPLIES = false;
 
@@ -59,11 +60,12 @@ type Props = {
   },
   commentIdentityChannel: any,
   activeChannelClaim: ?ChannelClaim,
-  playingUri: ?PlayingUri,
+  playingUri: PlayingUri,
   stakedLevel: number,
   supportDisabled: boolean,
   setQuickReply: (any) => void,
   quickReply: any,
+  selectOdyseeMembershipForUri: string,
 };
 
 const LENGTH_TO_COLLAPSE = 300;
@@ -93,6 +95,7 @@ function CommentView(props: Props) {
     supportDisabled,
     setQuickReply,
     quickReply,
+    selectOdyseeMembershipForUri,
   } = props;
 
   const {
@@ -183,7 +186,7 @@ function CommentView(props: Props) {
   }
 
   function handleEditComment() {
-    if (playingUri && playingUri.source === 'comment') {
+    if (playingUri.source === 'comment') {
       clearPlayingUri();
     }
     setEditing(true);
@@ -256,18 +259,21 @@ function CommentView(props: Props) {
       >
         <div className="comment__thumbnail-wrapper">
           {authorUri ? (
-            <ChannelThumbnail uri={authorUri} obscure={channelIsBlocked} xsmall className="comment__author-thumbnail" />
+            <ChannelThumbnail
+              uri={authorUri}
+              obscure={channelIsBlocked}
+              xsmall
+              className="comment__author-thumbnail"
+              checkMembership={false}
+            />
           ) : (
-            <ChannelThumbnail xsmall className="comment__author-thumbnail" />
+            <ChannelThumbnail xsmall className="comment__author-thumbnail" checkMembership={false} />
           )}
         </div>
 
         <div className="comment__body-container">
           <div className="comment__meta">
             <div className="comment__meta-information">
-              {isGlobalMod && <CommentBadge label={__('Admin')} icon={ICONS.BADGE_MOD} />}
-              {isModerator && <CommentBadge label={__('Moderator')} icon={ICONS.BADGE_MOD} />}
-
               {!author ? (
                 <span className="comment__author">{__('Anonymous')}</span>
               ) : (
@@ -277,8 +283,13 @@ function CommentView(props: Props) {
                   })}
                   link
                   uri={authorUri}
+                  comment
+                  showAtSign
                 />
               )}
+              {isGlobalMod && <CommentBadge label={__('Admin')} icon={ICONS.BADGE_ADMIN} />}
+              {isModerator && <CommentBadge label={__('Moderator')} icon={ICONS.BADGE_MOD} />}
+              <PremiumBadge membership={selectOdyseeMembershipForUri} linkPage />
               <Button
                 className="comment__time"
                 onClick={handleTimeClick}
@@ -357,6 +368,7 @@ function CommentView(props: Props) {
                         promptLinks
                         parentCommentId={commentId}
                         stakedLevel={stakedLevel}
+                        hasMembership={selectOdyseeMembershipForUri}
                       />
                     </Expandable>
                   ) : (
@@ -365,6 +377,7 @@ function CommentView(props: Props) {
                       promptLinks
                       parentCommentId={commentId}
                       stakedLevel={stakedLevel}
+                      hasMembership={selectOdyseeMembershipForUri}
                     />
                   )}
                 </div>

@@ -19,6 +19,7 @@ import Lbry from 'lbry';
 import * as SETTINGS from 'constants/settings';
 import { selectCostInfoForUri, Lbryio } from 'lbryinc';
 import { selectClientSetting, selectosNotificationsEnabled, selectDaemonSettings } from 'redux/selectors/settings';
+import { selectIsActiveLivestreamForUri } from 'redux/selectors/livestream';
 
 const DOWNLOAD_POLL_INTERVAL = 1000;
 
@@ -118,7 +119,7 @@ export function doSetPlayingUri({
   source?: string,
   commentId?: string,
   pathname?: string,
-  collectionId?: string,
+  collectionId?: ?string,
 }) {
   return (dispatch: Dispatch) => {
     dispatch({
@@ -148,15 +149,20 @@ export function doDownloadUri(uri: string) {
   return (dispatch: Dispatch) => dispatch(doPlayUri(uri, false, true, () => dispatch(doAnalyticsView(uri))));
 }
 
-export function doUriInitiatePlay(uri: string, collectionId?: string, isPlayable?: boolean) {
-  return (dispatch: Dispatch) => {
-    dispatch(doSetPrimaryUri(uri));
+export function doUriInitiatePlay(playingOptions: PlayingUri, isPlayable?: boolean, isFloating?: boolean) {
+  return (dispatch: Dispatch, getState: () => any) => {
+    const { uri, source } = playingOptions;
 
-    if (isPlayable) {
-      dispatch(doSetPlayingUri({ uri, collectionId }));
-    }
+    if (!uri) return;
 
-    dispatch(doPlayUri(uri, false, true, (fileInfo) => dispatch(doAnaltyicsPurchaseEvent(fileInfo))));
+    const state = getState();
+    const isLive = selectIsActiveLivestreamForUri(state, uri);
+
+    if (!isFloating && !source) dispatch(doSetPrimaryUri(uri));
+
+    if (isPlayable) dispatch(doSetPlayingUri(playingOptions));
+
+    if (!isLive) dispatch(doPlayUri(uri, false, true, (fileInfo) => dispatch(doAnaltyicsPurchaseEvent(fileInfo))));
   };
 }
 

@@ -1,21 +1,27 @@
 import Lbry from 'lbry';
-import { makeSelectClaimForUri } from 'redux/selectors/claims';
+import { selectClaimForUri } from 'redux/selectors/claims';
 import { doFetchChannelListMine } from 'redux/actions/claims';
 import { isURIValid, normalizeURI } from 'util/lbryURI';
 import { batchActions } from 'util/batch-actions';
+import { getStripeEnvironment } from 'util/stripe';
 
 import * as ACTIONS from 'constants/action_types';
+import { doFetchGeoBlockedList } from 'redux/actions/blocked';
 import { doClaimRewardType, doRewardList } from 'redux/actions/rewards';
 import { selectEmailToVerify, selectPhoneToVerify, selectUserCountryCode, selectUser } from 'redux/selectors/user';
+import { selectIsRewardApproved } from 'redux/selectors/rewards';
 import { doToast } from 'redux/actions/notifications';
 import rewards from 'rewards';
 import { Lbryio } from 'lbryinc';
-import { DOMAIN } from 'config';
+import { DOMAIN, LOCALE_API } from 'config';
 import { getDefaultLanguage } from 'util/default-languages';
 const AUTH_IN_PROGRESS = 'authInProgress';
 export let sessionStorageAvailable = false;
 const CHECK_INTERVAL = 200;
 const AUTH_WAIT_TIMEOUT = 10000;
+const stripeEnvironment = getStripeEnvironment();
+
+const ODYSEE_CHANNEL_ID = '80d2590ad04e36fb1d077a9b9e3a8bba76defdf8';
 
 export function doFetchInviteStatus(shouldCallRewardList = true) {
   return (dispatch) => {
@@ -101,6 +107,59 @@ function checkAuthBusy() {
   });
 }
 
+/***
+ * Given a user, return their highest ranking Odysee membership (Premium or Premium Plus)
+ * @param dispatch
+ * @param user
+ * @returns {Promise<void>}
+ */
+export function doCheckUserOdyseeMemberships(user) {
+  return async (dispatch) => {
+    // get memberships for a given user
+    // TODO: in the future, can we specify this just to @odysee?
+
+    const response = await Lbryio.call(
+      'membership',
+      'mine',
+      {
+        environment: stripeEnvironment,
+      },
+      'post'
+    );
+
+    let savedMemberships = [];
+    let highestMembershipRanking;
+
+    // TODO: this will work for now, but it should be adjusted
+    // TODO: to check if it's active, or if it's cancelled if it's still valid past current date
+    // loop through all memberships and save the @odysee ones
+    // maybe in the future we can only hit @odysee in the API call
+    for (const membership of response) {
+      if (membership.MembershipDetails && membership.MembershipDetails.channel_name === '@odysee') {
+        savedMemberships.push(membership.MembershipDetails.name);
+      }
+    }
+
+    // determine highest ranking membership based on returned data
+    // note: this is from an odd state in the API where a user can be both premium/Premium + at the same time
+    // I expect this can change once upgrade/downgrade is implemented
+    if (savedMemberships.length > 0) {
+      // if premium plus is a membership, return that, otherwise it's only premium
+      const premiumPlusExists = savedMemberships.includes('Premium+');
+      if (premiumPlusExists) {
+        highestMembershipRanking = 'Premium+';
+      } else {
+        highestMembershipRanking = 'Premium';
+      }
+    }
+
+    dispatch({
+      type: ACTIONS.ADD_ODYSEE_MEMBERSHIP_DATA,
+      data: { user, odyseeMembershipName: highestMembershipRanking },
+    });
+  };
+}
+
 // TODO: Call doInstallNew separately so we don't have to pass appVersion and os_system params?
 export function doAuthenticate(
   appVersion,
@@ -124,6 +183,11 @@ export function doAuthenticate(
             data: { user, accessToken: token },
           });
 
+          // if user is an Odysee member, get the membership details
+          if (user.odysee_member) {
+            dispatch(doCheckUserOdyseeMemberships(user));
+          }
+
           if (shareUsageData) {
             dispatch(doRewardList());
 
@@ -131,6 +195,8 @@ export function doAuthenticate(
               doInstallNew(appVersion, callbackForUsersWhoAreSharingData, DOMAIN);
             }
           }
+
+          dispatch(doFetchGeoBlockedList());
         });
       })
       .catch((error) => {
@@ -153,6 +219,11 @@ export function doUserFetch() {
 
       Lbryio.getCurrentUser()
         .then((user) => {
+          // get user membership status
+          if (user.odysee_member) {
+            dispatch(doCheckUserOdyseeMemberships(user));
+          }
+
           dispatch({
             type: ACTIONS.USER_FETCH_SUCCESS,
             data: { user },
@@ -174,6 +245,11 @@ export function doUserCheckEmailVerified() {
   return (dispatch) => {
     Lbryio.getCurrentUser().then((user) => {
       if (user.has_verified_email) {
+        // check premium membership
+        if (user.odysee_member) {
+          dispatch(doCheckUserOdyseeMemberships(user));
+        }
+
         dispatch(doRewardList());
 
         dispatch({
@@ -347,16 +423,19 @@ export function doUserCheckIfEmailExists(email) {
 
     Lbryio.call('user', 'exists', { email }, 'post')
       .catch((error) => {
+        // no email
         if (error.response && error.response.status === 404) {
           dispatch({
             type: ACTIONS.USER_EMAIL_NEW_DOES_NOT_EXIST,
           });
+          // sign in by email
         } else if (error.response && error.response.status === 412) {
           triggerEmailFlow(false);
         }
 
         throw error;
       })
+      // sign the user in
       .then(success, failure);
   };
 }
@@ -639,17 +718,54 @@ export function doUserSetReferrerReset() {
     });
   };
 }
+
+export function doUserSetReferrerWithUri(uri) {
+  return async (dispatch, getState) => {
+    const state = getState();
+    let claim = selectClaimForUri(state, uri);
+
+    let referrerCode;
+    if (!claim) {
+      try {
+        const response = await Lbry.resolve({ urls: [uri] });
+        if (response && response[uri] && !response[uri].error) claim = response && response[uri];
+        if (claim) {
+          if (claim.signing_channel) {
+            referrerCode = claim.signing_channel.permanent_url.replace('lbry://', '');
+          } else {
+            referrerCode = claim.permanent_url.replace('lbry://', '');
+          }
+          const isRewardApproved = selectIsRewardApproved(state);
+          dispatch(doUserSetReferrer(referrerCode, isRewardApproved));
+        }
+      } catch (error) {
+        dispatch({
+          type: ACTIONS.USER_SET_REFERRER_FAILURE,
+          data: { error },
+        });
+      }
+    } else {
+      referrerCode = claim.permanent_url.replace('lbry://', '');
+      const isRewardApproved = selectIsRewardApproved(state);
+      dispatch(doUserSetReferrer(referrerCode, isRewardApproved));
+    }
+  };
+}
+
 export function doUserSetReferrer(referrer, shouldClaim) {
   return async (dispatch, getState) => {
     dispatch({
       type: ACTIONS.USER_SET_REFERRER_STARTED,
     });
-    let claim;
-    let referrerCode;
+
+    let claim, referrerCode;
     const isValid = isURIValid(referrer);
+
     if (isValid) {
+      const state = getState();
       const uri = normalizeURI(referrer);
-      claim = makeSelectClaimForUri(uri)(getState());
+      claim = selectClaimForUri(state, uri);
+
       if (!claim) {
         try {
           const response = await Lbry.resolve({ urls: [uri] });
@@ -781,6 +897,74 @@ export function doCheckYoutubeTransfer() {
           type: ACTIONS.USER_YOUTUBE_IMPORT_FAILURE,
           data: String(error),
         });
+      });
+  };
+}
+
+/***
+ * Receives a csv of channel claim ids, hits the backend and returns nicely formatted object with relevant info
+ * @param claimIdCsv
+ * @returns {(function(*): Promise<void>)|*}
+ */
+export function doFetchUserMemberships(claimIdCsv) {
+  return async (dispatch) => {
+    if (!claimIdCsv || (claimIdCsv.length && claimIdCsv.length < 1)) return;
+
+    // check if users have odysee memberships (premium/premium+)
+    const response = await Lbryio.call('membership', 'check', {
+      channel_id: ODYSEE_CHANNEL_ID,
+      claim_ids: claimIdCsv,
+      environment: stripeEnvironment,
+    });
+
+    let updatedResponse = {};
+
+    // loop through returned users
+    for (const user in response) {
+      // if array was returned for a user (indicating a membership exists), otherwise is null
+      if (response[user] && response[user].length) {
+        // get membership for user
+        // note: a for loop is kind of odd, indicates there may be multiple memberships?
+        // probably not needed depending on what we do with the frontend, should revisit
+        for (const membership of response[user]) {
+          if (membership.channel_name) {
+            updatedResponse[user] = membership.name;
+            window.checkedMemberships[user] = membership.name;
+          }
+        }
+      } else {
+        // note the user has been fetched but is null
+        updatedResponse[user] = null;
+        window.checkedMemberships[user] = null;
+      }
+    }
+
+    dispatch({ type: ACTIONS.ADD_CLAIMIDS_MEMBERSHIP_DATA, data: { response: updatedResponse } });
+  };
+}
+
+export function doFetchUserLocale(isRetry = false) {
+  return (dispatch) => {
+    fetch(LOCALE_API)
+      .then((res) => res.json())
+      .then((json) => {
+        const locale = json.data; // [flow] local: LocaleInfo
+        if (locale) {
+          dispatch({
+            type: ACTIONS.USER_FETCH_LOCALE_DONE,
+            data: locale,
+          });
+        }
+      })
+      .catch(() => {
+        if (!isRetry) {
+          // If failed, retry one more time after N seconds. This removes the
+          // need to fetch at each component level. If it failed twice, probably
+          // don't need to fetch anymore.
+          setTimeout(() => {
+            dispatch(doFetchUserLocale(true));
+          }, 10000);
+        }
       });
   };
 }

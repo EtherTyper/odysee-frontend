@@ -3,8 +3,10 @@ import type { Node } from 'react';
 import React from 'react';
 import classnames from 'classnames';
 import Button from 'component/button';
+import PremiumBadge from 'component/common/premium-badge';
+import { stripLeadingAtSign } from 'util/string';
 
-type ChannelInfo = { uri: string, name: string };
+type ChannelInfo = { uri: string, name: string, title: string };
 
 type Props = {
   uri: string,
@@ -14,11 +16,15 @@ type Props = {
   focusable?: boolean, // Defaults to 'true' if not provided.
   hideAnonymous?: boolean,
   inline?: boolean,
+  showAtSign?: boolean,
   className?: string,
+  showMemberBadge?: boolean,
   children: ?Node, // to allow for other elements to be nested within the UriIndicator (commit: 1e82586f).
   // --- redux ---
   claim: ?Claim,
   isResolvingUri: boolean,
+  odyseeMembership: string,
+  comment?: boolean,
   resolveUri: (string) => void,
 };
 
@@ -46,6 +52,7 @@ class UriIndicator extends React.PureComponent<Props> {
         isAnonymous: false,
         channelName: channelInfo.name,
         channelLink: isLinkType ? channelInfo.uri : false,
+        channelTitle: channelInfo.title,
       };
     } else if (claim) {
       const signingChannel = claim.signing_channel && claim.signing_channel.amount;
@@ -57,6 +64,10 @@ class UriIndicator extends React.PureComponent<Props> {
         isAnonymous: !signingChannel && !isChannelClaim,
         channelName: channelClaim?.name,
         channelLink: isLinkType ? channelClaim?.canonical_url || channelClaim?.permanent_url : false,
+        channelTitle:
+          channelClaim && channelClaim.value && channelClaim.value.title
+            ? channelClaim.value.title
+            : stripLeadingAtSign(channelClaim?.name),
       };
     } else {
       return {
@@ -64,12 +75,14 @@ class UriIndicator extends React.PureComponent<Props> {
         isAnonymous: undefined,
         channelName: undefined,
         channelLink: undefined,
+        channelTitle: undefined,
       };
     }
   };
 
   render() {
     const {
+      uri,
       channelInfo,
       link,
       isResolvingUri,
@@ -79,13 +92,17 @@ class UriIndicator extends React.PureComponent<Props> {
       focusable = true,
       external = false,
       hideAnonymous = false,
+      showAtSign,
       className,
+      odyseeMembership,
+      comment,
+      showMemberBadge = true,
     } = this.props;
 
     if (!channelInfo && !claim) {
       return (
         <span className={classnames('empty', className)}>
-          {isResolvingUri || claim === undefined ? __('Validating...') : __('[Removed]')}
+          {uri === null ? '---' : isResolvingUri || claim === undefined ? __('Validating...') : __('[Removed]')}
         </span>
       );
     }
@@ -105,11 +122,12 @@ class UriIndicator extends React.PureComponent<Props> {
     }
 
     if (data.hasChannelData) {
-      const { channelName, channelLink } = data;
+      const { channelLink, channelTitle, channelName } = data;
 
       const inner = (
         <span dir="auto" className={classnames('channel-name', { 'channel-name--inline': inline })}>
-          {channelName}
+          <p>{showAtSign ? channelName : stripLeadingAtSign(channelTitle)}</p>
+          {!comment && showMemberBadge && <PremiumBadge membership={odyseeMembership} />}
         </span>
       );
 

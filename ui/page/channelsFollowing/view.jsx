@@ -2,9 +2,10 @@
 import * as PAGES from 'constants/pages';
 import * as ICONS from 'constants/icons';
 import * as CS from 'constants/claim_search';
-import { SIMPLE_SITE, ENABLE_NO_SOURCE_CLAIMS } from 'config';
+import { SIMPLE_SITE } from 'config';
 import React from 'react';
 import ChannelsFollowingDiscoverPage from 'page/channelsFollowingDiscover';
+import LivestreamSection from 'page/discover/livestreamSection';
 import ClaimListDiscover from 'component/claimListDiscover';
 import Page from 'component/page';
 import Button from 'component/button';
@@ -42,7 +43,7 @@ function ChannelsFollowingPage(props: Props) {
   return !hasSubscribedChannels ? (
     <ChannelsFollowingDiscoverPage />
   ) : (
-    <Page noFooter fullWidthPage={tileLayout}>
+    <Page noFooter fullWidthPage={tileLayout} className="main__channelsFollowing">
       {!fetchingActiveLivestreams && (
         <>
           {!hideScheduledLivestreams && (
@@ -55,7 +56,6 @@ function ChannelsFollowingPage(props: Props) {
           )}
 
           <ClaimListDiscover
-            prefixUris={getLivestreamUris(activeLivestreams, channelIds)}
             hideAdvancedFilter={SIMPLE_SITE}
             streamType={SIMPLE_SITE ? CS.CONTENT_ALL : undefined}
             tileLayout={tileLayout}
@@ -68,14 +68,29 @@ function ChannelsFollowingPage(props: Props) {
             defaultOrderBy={CS.ORDER_BY_NEW}
             channelIds={channelIds}
             meta={
-              <Button
-                icon={ICONS.SEARCH}
-                button="secondary"
-                label={__('Discover Channels')}
-                navigate={`/$/${PAGES.CHANNELS_FOLLOWING_DISCOVER}`}
+              <>
+                <Button
+                  icon={ICONS.SEARCH}
+                  button="secondary"
+                  label={__('Discover Channels')}
+                  navigate={`/$/${PAGES.CHANNELS_FOLLOWING_DISCOVER}`}
+                />
+                <Button
+                  icon={ICONS.SETTINGS}
+                  button="secondary"
+                  label={__('Manage')}
+                  navigate={`/$/${PAGES.CHANNELS_FOLLOWING_MANAGE}`}
+                />
+              </>
+            }
+            subSection={
+              <LivestreamSection
+                tileLayout={tileLayout}
+                channelIds={channelIds}
+                activeLivestreams={activeLivestreams}
+                doFetchActiveLivestreams={doFetchActiveLivestreams}
               />
             }
-            showNoSourceClaims={ENABLE_NO_SOURCE_CLAIMS}
             hasSource
           />
         </>

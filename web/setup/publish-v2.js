@@ -1,5 +1,6 @@
 // @flow
 import * as tus from 'tus-js-client';
+import NoopUrlStorage from 'tus-js-client/lib/noopUrlStorage';
 import analytics from '../../ui/analytics';
 import { X_LBRY_AUTH_TOKEN } from '../../ui/constants/token';
 import { doUpdateUploadAdd, doUpdateUploadProgress, doUpdateUploadRemove } from '../../ui/redux/actions/publish';
@@ -21,6 +22,15 @@ const STATUS_LOCKED = 423;
  */
 function inStatusCategory(status, category) {
   return status >= category && status < category + 100;
+}
+
+function getTusErrorType(errMsg: string) {
+  if (errMsg.startsWith('tus: failed to upload chunk at offset')) {
+    // This is the only message that contains dynamic value prior to the first comma.
+    return 'tus: failed to upload chunk at offset';
+  } else {
+    return errMsg.startsWith('tus:') ? errMsg.substring(0, errMsg.indexOf(',')) : errMsg;
+  }
 }
 
 export function makeResumableUploadRequest(
@@ -60,9 +70,10 @@ export function makeResumableUploadRequest(
     const uploader = new tus.Upload(file, {
       ...urlOptions,
       chunkSize: UPLOAD_CHUNK_SIZE_BYTE,
-      retryDelays: [5000, 10000, 30000],
+      retryDelays: [122000],
       parallelUploads: 1,
       storeFingerprintForResuming: false,
+      urlStorage: new NoopUrlStorage(),
       removeFingerprintOnSuccess: true,
       headers: { [X_LBRY_AUTH_TOKEN]: token },
       metadata: {
@@ -83,32 +94,17 @@ export function makeResumableUploadRequest(
           customErr = 'File is locked. Try resuming after waiting a few minutes';
         }
 
-        let localStorageInfo;
-        if (errMsg.includes('QuotaExceededError')) {
-          try {
-            localStorageInfo = `${window.localStorage.length} items; ${
-              JSON.stringify(window.localStorage).length
-            } bytes`;
-          } catch (e) {
-            localStorageInfo = 'inaccessible';
-          }
-        }
-
         window.store.dispatch(doUpdateUploadProgress({ guid, status: 'error' }));
-
-        analytics.sentryError('tus-upload', err);
+        analytics.sentryError(getTusErrorType(errMsg), { onError: err, tusUpload: uploader });
 
         reject(
           // $FlowFixMe - flow's constructor for Error is incorrect.
           new Error(customErr || err, {
             cause: {
-              url: uploader.url,
-              status,
-              ...(uploader._fingerprint ? { fingerprint: uploader._fingerprint } : {}),
-              ...(uploader._retryAttempt ? { retryAttempt: uploader._retryAttempt } : {}),
-              ...(uploader._offsetBeforeRetry ? { offsetBeforeRetry: uploader._offsetBeforeRetry } : {}),
+              // ...(uploader._fingerprint ? { fingerprint: uploader._fingerprint } : {}),
+              // ...(uploader._retryAttempt ? { retryAttempt: uploader._retryAttempt } : {}),
+              // ...(uploader._offsetBeforeRetry ? { offsetBeforeRetry: uploader._offsetBeforeRetry } : {}),
               ...(customErr ? { original: errMsg } : {}),
-              ...(localStorageInfo ? { localStorageInfo } : {}),
             },
           })
         );
@@ -152,17 +148,7 @@ export function makeResumableUploadRequest(
       },
     });
 
-    uploader
-      .findPreviousUploads()
-      .then((previousUploads) => {
-        if (!isPreview) {
-          window.store.dispatch(doUpdateUploadAdd(file, params, uploader));
-        }
-
-        uploader.start();
-      })
-      .catch((err) => {
-        reject(new Error(__('Failed to initiate upload (%err%)', { err })));
-      });
+    window.store.dispatch(doUpdateUploadAdd(file, params, uploader));
+    uploader.start();
   });
 }

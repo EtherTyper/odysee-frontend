@@ -6,6 +6,7 @@ import React from 'react';
 import usePersistedState from 'effects/use-persisted-state';
 import { withRouter } from 'react-router';
 import { MATURE_TAGS } from 'constants/tags';
+import { resolveLangForClaimSearch } from 'util/default-languages';
 import { createNormalizedClaimSearchKey } from 'util/claim';
 import { splitBySeparator } from 'util/lbryURI';
 import Button from 'component/button';
@@ -14,14 +15,17 @@ import ClaimList from 'component/claimList';
 import ClaimPreview from 'component/claimPreview';
 import ClaimPreviewTile from 'component/claimPreviewTile';
 import I18nMessage from 'component/i18nMessage';
+import LangFilterIndicator from 'component/langFilterIndicator';
 import ClaimListHeader from 'component/claimListHeader';
 import useFetchViewCount from 'effects/use-fetch-view-count';
+import useResolvePins from 'effects/use-resolve-pins';
 import { useIsLargeScreen } from 'effects/use-screensize';
+import useGetUserMemberships from 'effects/use-get-user-memberships';
 
 type Props = {
   uris: Array<string>,
   prefixUris?: Array<string>,
-  pins?: { urls: Array<string>, onlyPinForOrder?: string },
+  pins?: { urls?: Array<string>, claimIds?: Array<string>, onlyPinForOrder?: string },
   name?: string,
   type: string,
   pageSize?: number,
@@ -40,6 +44,7 @@ type Props = {
   showHiddenByUser?: boolean,
   showNoSourceClaims?: boolean,
   tileLayout: boolean,
+  ignoreSearchInLanguage?: boolean,
 
   orderBy?: Array<string>, // Trending, New, Top
   defaultOrderBy?: string,
@@ -71,8 +76,9 @@ type Props = {
   header?: Node,
   headerLabel?: string | Node,
   hiddenNsfwMessage?: Node,
-  injectedItem: ?Node,
+  injectedItem?: { node: Node, index?: number, replace?: boolean },
   meta?: Node,
+  subSection?: Node, // Additional section below [Header|Meta]
   renderProperties?: (Claim) => Node,
 
   history: { action: string, push: (string) => void, replace: (string) => void },
@@ -83,6 +89,7 @@ type Props = {
   claimSearchByQuery: { [string]: Array<string> },
   claimSearchByQueryLastPageReached: { [string]: boolean },
   claimsByUri: { [string]: any },
+  claimsById: { [string]: any },
   loading: boolean,
   showNsfw: boolean,
   hideReposts: boolean,
@@ -94,6 +101,9 @@ type Props = {
   // --- perform ---
   doClaimSearch: ({}) => void,
   doFetchViewCount: (claimIdCsv: string) => void,
+  doFetchUserMemberships: (claimIdCsv: string) => void,
+  doResolveClaimIds: (Array<string>) => Promise<any>,
+  doResolveUris: (Array<string>, boolean) => Promise<any>,
 
   hideLayoutButton?: boolean,
   loadedCallback?: (number) => void,
@@ -115,6 +125,7 @@ function ClaimListDiscover(props: Props) {
     defaultTags,
     loading,
     meta,
+    subSection,
     channelIds,
     showNsfw,
     hideReposts,
@@ -131,7 +142,7 @@ function ClaimListDiscover(props: Props) {
     header,
     name,
     claimType,
-    pageSize,
+    // pageSize,
     defaultClaimType,
     streamType,
     defaultStreamType = SIMPLE_SITE ? [CS.FILE_VIDEO, CS.FILE_AUDIO] : undefined, // add param for DEFAULT_STREAM_TYPE
@@ -155,6 +166,7 @@ function ClaimListDiscover(props: Props) {
     forceShowReposts = false,
     languageSetting,
     searchInLanguage,
+    ignoreSearchInLanguage,
     limitClaimsPerChannel,
     releaseTime,
     scrollAnchor,
@@ -165,16 +177,23 @@ function ClaimListDiscover(props: Props) {
     showNoSourceClaims,
     empty,
     claimsByUri,
+    claimsById,
     doFetchViewCount,
     hideLayoutButton = false,
     loadedCallback,
     maxClaimRender,
     useSkeletonScreen = true,
     excludeUris = [],
+    doFetchUserMemberships,
     swipeLayout = false,
+    doResolveUris,
+    doResolveClaimIds,
   } = props;
+
+  const resolvedPinUris = useResolvePins({ pins, claimsById, doResolveClaimIds, doResolveUris });
   const didNavigateForward = history.action === 'PUSH';
   const { search } = location;
+  const prevUris = React.useRef();
   const [page, setPage] = React.useState(1);
   const [forceRefresh, setForceRefresh] = React.useState();
   const isLargeScreen = useIsLargeScreen();
@@ -193,17 +212,8 @@ function ClaimListDiscover(props: Props) {
   );
 
   const langParam = urlParams.get(CS.LANGUAGE_KEY) || null;
-  const languageParams = searchInLanguage
-    ? langParam === null
-      ? languageSetting.concat(languageSetting === 'en' ? ',none' : '')
-      : langParam === 'any'
-      ? null
-      : langParam.concat(langParam === 'en' ? ',none' : '')
-    : langParam === null
-    ? null
-    : langParam === 'any'
-    ? null
-    : langParam.concat(langParam === 'en' ? ',none' : '');
+  const searchInSelectedLangOnly = searchInLanguage && !ignoreSearchInLanguage;
+  const languageParams = resolveLangForClaimSearch(languageSetting, searchInSelectedLangOnly, langParam);
 
   let claimTypeParam = claimType || defaultClaimType || null;
   let streamTypeParam = streamType || defaultStreamType || null;
@@ -239,7 +249,7 @@ function ClaimListDiscover(props: Props) {
         break;
 
       default:
-        console.log('Invalid or unhandled CONTENT_KEY:', contentTypeParam);
+        console.log('Invalid or unhandled CONTENT_KEY:', contentTypeParam); // eslint-disable-line no-console
         break;
     }
   }
@@ -248,8 +258,10 @@ function ClaimListDiscover(props: Props) {
   const channelIdsInUrl = urlParams.get(CS.CHANNEL_IDS_KEY);
   const channelIdsParam = channelIdsInUrl ? channelIdsInUrl.split(',') : channelIds;
   const feeAmountParam = urlParams.get('fee_amount') || feeAmount;
-  const originalPageSize = pageSize || CS.PAGE_SIZE;
-  const dynamicPageSize = isLargeScreen ? Math.ceil(originalPageSize * (3 / 2)) : originalPageSize;
+  // const originalPageSize = pageSize || CS.PAGE_SIZE;
+  const originalPageSize = 12;
+  // const dynamicPageSize = isLargeScreen ? Math.ceil(originalPageSize * (3 / 2)) : originalPageSize;
+  const dynamicPageSize = isLargeScreen ? Math.ceil((originalPageSize / 2) * 6) : originalPageSize;
   const historyAction = history.action;
 
   let orderParam = orderBy || urlParams.get(CS.ORDER_BY_KEY) || defaultOrderBy || orderParamEntry;
@@ -434,6 +446,7 @@ function ClaimListDiscover(props: Props) {
   const searchKey = createNormalizedClaimSearchKey(options);
   const claimSearchResult = claimSearchByQuery[searchKey];
   const claimSearchResultLastPageReached = claimSearchByQueryLastPageReached[searchKey];
+  const isUnfetchedClaimSearch = claimSearchResult === undefined;
 
   // uncomment to fix an item on a page
   //   const fixUri = 'lbry://@corbettreport#0/lbryodysee#5';
@@ -471,14 +484,15 @@ function ClaimListDiscover(props: Props) {
   }
 
   const shouldPerformSearch =
-    claimSearchResult === undefined ||
-    didNavigateForward ||
-    (!loading &&
-      !claimSearchResultLastPageReached &&
-      claimSearchResult &&
-      claimSearchResult.length &&
-      claimSearchResult.length < dynamicPageSize * options.page &&
-      claimSearchResult.length % dynamicPageSize === 0);
+    !uris &&
+    (claimSearchResult === undefined ||
+      didNavigateForward ||
+      (!loading &&
+        !claimSearchResultLastPageReached &&
+        claimSearchResult &&
+        claimSearchResult.length &&
+        claimSearchResult.length < dynamicPageSize * options.page &&
+        claimSearchResult.length % dynamicPageSize === 0));
 
   // Don't use the query from createNormalizedClaimSearchKey for the effect since that doesn't include page & release_time
   const optionsStringForEffect = JSON.stringify(options);
@@ -514,8 +528,27 @@ function ClaimListDiscover(props: Props) {
     </div>
   );
 
-  const renderUris = uris || claimSearchResult;
-  injectPinUrls(renderUris, orderParam, pins);
+  // **************************************************************************
+  // **************************************************************************
+
+  let finalUris;
+
+  if (uris) {
+    // --- direct uris
+    finalUris = uris;
+    injectPinUrls(finalUris, orderParam, pins, resolvedPinUris);
+    finalUris = filterExcludedUris(finalUris, excludeUris);
+  } else {
+    // --- searched uris
+    if (isUnfetchedClaimSearch && prevUris.current) {
+      finalUris = prevUris.current;
+    } else {
+      finalUris = claimSearchResult;
+      injectPinUrls(finalUris, orderParam, pins, resolvedPinUris);
+      finalUris = filterExcludedUris(finalUris, excludeUris);
+      prevUris.current = finalUris;
+    }
+  }
 
   // **************************************************************************
   // Helpers
@@ -575,6 +608,9 @@ function ClaimListDiscover(props: Props) {
       case CS.ORDER_BY_NEW_ASC:
         order_by = CS.ORDER_BY_NEW_ASC_VALUE;
         break;
+      case CS.ORDER_BY_NAME_ASC:
+        order_by = CS.ORDER_BY_NAME_ASC_VALUE;
+        break;
       default:
         order_by = CS.ORDER_BY_TOP_VALUE;
     }
@@ -586,14 +622,13 @@ function ClaimListDiscover(props: Props) {
     return order_by;
   }
 
-  function injectPinUrls(uris, order, pins) {
-    if (!pins || !pins.urls || (pins.onlyPinForOrder && pins.onlyPinForOrder !== order)) {
+  function injectPinUrls(uris, order, pins, resolvedPinUris) {
+    if (!pins || !uris || uris.length <= 2 || (pins.onlyPinForOrder && pins.onlyPinForOrder !== order)) {
       return;
     }
 
-    const pinUrls = pins.urls;
-    if (pinUrls && uris && uris.length > 2) {
-      pinUrls.forEach((pin) => {
+    if (resolvedPinUris) {
+      resolvedPinUris.forEach((pin) => {
         if (uris.includes(pin)) {
           uris.splice(uris.indexOf(pin), 1);
         } else {
@@ -601,14 +636,23 @@ function ClaimListDiscover(props: Props) {
         }
       });
 
-      uris.splice(2, 0, ...pinUrls);
+      uris.splice(2, 0, ...resolvedPinUris);
     }
+  }
+
+  function filterExcludedUris(uris, excludeUris) {
+    if (uris && excludeUris && excludeUris.length) {
+      return uris.filter((uri) => !excludeUris.includes(uri));
+    }
+    return uris;
   }
 
   // **************************************************************************
   // **************************************************************************
 
-  useFetchViewCount(fetchViewCount, renderUris, claimsByUri, doFetchViewCount);
+  useFetchViewCount(fetchViewCount, finalUris, claimsByUri, doFetchViewCount);
+
+  useGetUserMemberships(true, finalUris, claimsByUri, doFetchUserMemberships);
 
   React.useEffect(() => {
     if (shouldPerformSearch) {
@@ -646,16 +690,20 @@ function ClaimListDiscover(props: Props) {
       {headerLabel && <label className="claim-list__header-label">{headerLabel}</label>}
       {tileLayout ? (
         <div>
-          {!repostedClaimId && (
+          {!repostedClaimId && showHeader && (
             <div className="section__header--actions">
-              {headerToUse}
+              <div className="section__actions">
+                {headerToUse}
+                {searchInSelectedLangOnly && <LangFilterIndicator />}
+              </div>
               {meta && <div className="section__actions--no-margin">{meta}</div>}
             </div>
           )}
+          {subSection && <div>{subSection}</div>}
           <ClaimList
             tileLayout
             loading={loading}
-            uris={renderUris}
+            uris={finalUris}
             prefixUris={prefixUris}
             onScrollBottom={handleScrollBottom}
             page={page}
@@ -669,7 +717,6 @@ function ClaimListDiscover(props: Props) {
             showNoSourceClaims={showNoSourceClaims}
             empty={empty}
             maxClaimRender={maxClaimRender}
-            excludeUris={excludeUris}
             loadedCallback={loadedCallback}
             swipeLayout={swipeLayout}
           />
@@ -685,14 +732,18 @@ function ClaimListDiscover(props: Props) {
         <div>
           {showHeader && (
             <div className="section__header--actions">
-              {headerToUse}
+              <div className="section__actions">
+                {headerToUse}
+                {searchInSelectedLangOnly && <LangFilterIndicator />}
+              </div>
               {meta && <div className="section__actions--no-margin">{meta}</div>}
             </div>
           )}
+          {subSection && <div>{subSection}</div>}
           <ClaimList
             type={type}
             loading={loading}
-            uris={renderUris}
+            uris={finalUris}
             prefixUris={prefixUris}
             onScrollBottom={handleScrollBottom}
             page={page}
@@ -706,7 +757,6 @@ function ClaimListDiscover(props: Props) {
             showNoSourceClaims={hasNoSource || showNoSourceClaims}
             empty={empty}
             maxClaimRender={maxClaimRender}
-            excludeUris={excludeUris}
             loadedCallback={loadedCallback}
             swipeLayout={swipeLayout}
           />

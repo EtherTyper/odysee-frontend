@@ -1,5 +1,5 @@
 // @flow
-import { SIMPLE_SITE, SHOW_ADS } from 'config';
+import { SIMPLE_SITE } from 'config';
 import React, { useEffect } from 'react';
 import Lbry from 'lbry';
 import { parseURI, isNameValid } from 'util/lbryURI';
@@ -23,7 +23,7 @@ type Props = {
 };
 
 export default function SearchPage(props: Props) {
-  const { urlQuery, searchOptions, search, uris, isSearching, isAuthenticated, hasReachedMaxResultsLength } = props;
+  const { urlQuery, searchOptions, search, uris, isSearching, hasReachedMaxResultsLength } = props;
   const { push } = useHistory();
   const [from, setFrom] = React.useState(0);
 
@@ -90,6 +90,7 @@ export default function SearchPage(props: Props) {
             <ClaimList
               uris={uris}
               loading={isSearching}
+              useLoadingSpinner
               onScrollBottom={loadMore}
               // 'page' is 1-indexed; It's not the same as 'from', but it just
               // needs to be unique to indicate when a fetch is needed.
@@ -102,9 +103,7 @@ export default function SearchPage(props: Props) {
                   onSearchOptionsChanged={resetPage}
                 />
               }
-              injectedItem={
-                SHOW_ADS && IS_WEB ? (SIMPLE_SITE ? false : !isAuthenticated && <Ads small type={'video'} />) : false
-              }
+              injectedItem={{ node: <Ads small type="video" />, index: 3 }}
             />
 
             <div className="main--empty help">{__('These search results are provided by Odysee.')}</div>

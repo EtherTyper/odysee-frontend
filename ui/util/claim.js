@@ -124,6 +124,22 @@ export function getClaimTitle(claim: ?Claim) {
   return metadata && metadata.title;
 }
 
+export function getClaimVideoInfo(claim: ?Claim) {
+  const metadata = getClaimMetadata(claim);
+  // $FlowFixMe
+  return metadata && metadata.video;
+}
+
+export function getVideoClaimAspectRatio(claim: ?Claim) {
+  const { width, height } = getClaimVideoInfo(claim) || {};
+  return width && height ? height / width : undefined;
+}
+
 export const isStreamPlaceholderClaim = (claim: ?StreamClaim) => {
   return claim ? Boolean(claim.value_type === 'stream' && !claim.value.source) : false;
+};
+
+export const getThumbnailFromClaim = (claim: ?Claim) => {
+  const thumbnail = claim && claim.value && claim.value.thumbnail;
+  return thumbnail && thumbnail.url ? thumbnail.url.trim().replace(/^http:\/\//i, 'https://') : undefined;
 };

@@ -110,6 +110,16 @@ function ChannelPage(props: Props) {
         return true;
       }
     });
+  const showDiscussion = React.useMemo(() => {
+    if (discussionWasMounted && currentView !== PAGE.DISCUSSION) {
+      setDiscussionWasMounted(false);
+    }
+
+    return discussionWasMounted && currentView === PAGE.DISCUSSION;
+
+    // only re-calculate on discussionWasMounted or uri change
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [discussionWasMounted, uri]);
 
   const hasUnpublishedCollections = unpublishedCollections && Object.keys(unpublishedCollections).length;
 
@@ -225,9 +235,16 @@ function ChannelPage(props: Props) {
           <ClaimMenuList uri={claim.permanent_url} inline isChannelPage />
         </div>
         {cover && <img className={classnames('channel-cover__custom')} src={PlaceholderTx} />}
-        {cover && <OptimizedImage className={classnames('channel-cover__custom')} src={cover} objectFit="cover" />}
+        {cover && <OptimizedImage className={classnames('channel-cover__custom')} src={cover} />}
         <div className="channel__primary-info">
-          <ChannelThumbnail className="channel__thumbnail--channel-page" uri={uri} allowGifs />
+          <ChannelThumbnail
+            className="channel__thumbnail--channel-page"
+            uri={uri}
+            allowGifs
+            showMemberBadge
+            isChannel
+            hideStakedIndicator
+          />
           <h1 className="channel__title">
             <TruncatedText lines={2} showTooltip>
               {title || (channelName && '@' + channelName)}
@@ -316,7 +333,7 @@ function ChannelPage(props: Props) {
               <ChannelAbout uri={uri} />
             </TabPanel>
             <TabPanel>
-              {(discussionWasMounted || currentView === PAGE.DISCUSSION) && <ChannelDiscussion uri={uri} />}
+              {(showDiscussion || currentView === PAGE.DISCUSSION) && <ChannelDiscussion uri={uri} />}
             </TabPanel>
           </TabPanels>
         </Tabs>

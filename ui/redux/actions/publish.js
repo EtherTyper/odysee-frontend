@@ -1,4 +1,5 @@
 // @flow
+import { PUBLISH_TIMEOUT_BUT_LIKELY_SUCCESSFUL } from 'constants/errors';
 import * as MODALS from 'constants/modal_types';
 import * as ACTIONS from 'constants/action_types';
 import * as PAGES from 'constants/pages';
@@ -14,7 +15,7 @@ import {
   selectReflectingById,
 } from 'redux/selectors/claims';
 import { makeSelectPublishFormValue, selectPublishFormValues, selectMyClaimForUri } from 'redux/selectors/publish';
-import { doError } from 'redux/actions/notifications';
+import { doError, doToast } from 'redux/actions/notifications';
 import { push } from 'connected-react-router';
 import analytics from 'analytics';
 import { doOpenModal, doSetIncognito, doSetActiveChannel } from 'redux/actions/app';
@@ -282,7 +283,13 @@ export const doPublishDesktop = (filePath: string, preview?: boolean) => (dispat
     actions.push({
       type: ACTIONS.PUBLISH_FAIL,
     });
-    actions.push(doError({ message: error.message, cause: error.cause }));
+
+    if (error.message === PUBLISH_TIMEOUT_BUT_LIKELY_SUCCESSFUL) {
+      actions.push(doToast({ message: error.message, duration: 'long' }));
+    } else {
+      actions.push(doError({ message: error.message, cause: error.cause }));
+    }
+
     dispatch(batchActions(...actions));
   };
 
@@ -394,6 +401,13 @@ export const doResetThumbnailStatus = () => (dispatch: Dispatch) => {
     );
 };
 
+export const doBeginPublish = (name: string) => (dispatch: Dispatch) => {
+  dispatch(doClearPublish());
+  // $FlowFixMe
+  dispatch(doPrepareEdit({ name }));
+  dispatch(push(`/$/${PAGES.UPLOAD}`));
+};
+
 export const doClearPublish = () => (dispatch: Dispatch) => {
   dispatch({ type: ACTIONS.CLEAR_PUBLISH });
   return dispatch(doResetThumbnailStatus());
@@ -473,7 +487,10 @@ export const doUploadThumbnail = (
 
         // This sucks but ¯\_(ツ)_/¯
         if (message === 'Failed to fetch') {
-          message = __('Thumbnail upload service may be down, try again later.');
+          // message = __('Thumbnail upload service may be down, try again later.');
+          message = __(
+            'Thumbnail upload service may be down, try again later. Some plugins like AdGuard Français may be blocking the service. If using Brave, go to brave://adblock and disable it, or turn down shields.'
+          );
         }
 
         const userInput = [fileName, fileExt, fileType, thumbnail, size];

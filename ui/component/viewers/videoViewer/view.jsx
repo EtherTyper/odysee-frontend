@@ -1,7 +1,6 @@
 // @flow
 import { ENABLE_PREROLL_ADS } from 'config';
 import * as PAGES from 'constants/pages';
-import { VIDEO_ALMOST_FINISHED_THRESHOLD } from 'constants/player';
 import * as ICONS from 'constants/icons';
 import React, { useEffect, useState, useContext, useCallback } from 'react';
 import { stopContextMenu } from 'util/context-menu';
@@ -27,9 +26,11 @@ import { getAllIds } from 'util/buildHomepage';
 import type { HomepageCat } from 'util/buildHomepage';
 import debounce from 'util/debounce';
 import { formatLbryUrlForWeb, generateListSearchUrlParams } from 'util/url';
+import useInterval from 'effects/use-interval';
 
 // const PLAY_TIMEOUT_ERROR = 'play_timeout_error';
 // const PLAY_TIMEOUT_LIMIT = 2000;
+const PLAY_POSITION_SAVE_INTERVAL_MS = 15000;
 
 type Props = {
   position: number,
@@ -65,6 +66,8 @@ type Props = {
   isMarkdownOrComment: boolean,
   doAnalyticsView: (string, number) => void,
   claimRewards: () => void,
+  isLivestreamClaim: boolean,
+  activeLivestreamForChannel: any,
 };
 
 /*
@@ -107,7 +110,10 @@ function VideoViewer(props: Props) {
     previousListUri,
     videoTheaterMode,
     isMarkdownOrComment,
+    isLivestreamClaim,
+    activeLivestreamForChannel,
   } = props;
+
   const permanentUrl = claim && claim.permanent_url;
   const adApprovedChannelIds = homepageData ? getAllIds(homepageData) : [];
   const claimId = claim && claim.claim_id;
@@ -137,6 +143,7 @@ function VideoViewer(props: Props) {
   const [videoNode, setVideoNode] = useState();
   const [localAutoplayNext, setLocalAutoplayNext] = useState(autoplayNext);
   const isFirstRender = React.useRef(true);
+  const playerRef = React.useRef(null);
 
   useEffect(() => {
     if (isFirstRender.current) {
@@ -145,6 +152,15 @@ function VideoViewer(props: Props) {
     }
     toggleAutoplayNext();
   }, [localAutoplayNext]);
+
+  useInterval(
+    () => {
+      if (playerRef.current && isPlaying && !isLivestreamClaim) {
+        handlePosition(playerRef.current);
+      }
+    },
+    !isLivestreamClaim ? PLAY_POSITION_SAVE_INTERVAL_MS : null
+  );
 
   const updateVolumeState = React.useCallback(
     debounce((volume, muted) => {
@@ -172,10 +188,12 @@ function VideoViewer(props: Props) {
 
   // TODO: analytics functionality
   function doTrackingBuffered(e: Event, data: any) {
-    fetch(source, { method: 'HEAD', cache: 'no-store' }).then((response) => {
-      data.playerPoweredBy = response.headers.get('x-powered-by');
-      doAnalyticsBuffer(uri, data);
-    });
+    if (!isLivestreamClaim) {
+      fetch(source, { method: 'HEAD', cache: 'no-store' }).then((response) => {
+        data.playerPoweredBy = response.headers.get('x-powered-by');
+        doAnalyticsBuffer(uri, data);
+      });
+    }
   }
 
   const doPlay = useCallback(
@@ -276,16 +294,10 @@ function VideoViewer(props: Props) {
   function onDispose(event, player) {
     handlePosition(player);
     analytics.videoIsPlaying(false, player);
-
-    const almostFinished = player.currentTime() / player.duration() >= VIDEO_ALMOST_FINISHED_THRESHOLD;
-
-    if (player.ended() || almostFinished) {
-      clearPosition(permanentUrl);
-    }
   }
 
   function handlePosition(player) {
-    savePosition(uri, player.currentTime());
+    if (!isLivestreamClaim) savePosition(uri, player.currentTime());
   }
 
   function restorePlaybackRate(player) {
@@ -305,23 +317,6 @@ function VideoViewer(props: Props) {
     setPlayNextUrl(false);
     setEnded(true);
   };
-
-  function centerPlayButton() {
-    // center play button
-    const playBT = document.getElementsByClassName('vjs-big-play-button')[0];
-    const videoDiv = window.player.children_[0].closest('video-js-parent');
-
-    if (!videoDiv) return;
-
-    const controlBar = document.getElementsByClassName('vjs-control-bar')[0];
-    const leftWidth = (videoDiv.offsetWidth - playBT.offsetWidth) / 2 + 'px';
-    const availableHeight = videoDiv.offsetHeight - controlBar.offsetHeight;
-    const topHeight = (availableHeight - playBT.offsetHeight) / 2 + 3 + 'px';
-
-    playBT.style.top = topHeight;
-    playBT.style.left = leftWidth;
-    playBT.style.margin = '0';
-  }
 
   const onPlayerReady = useCallback((player: Player, videoNode: any) => {
     if (!embedded) {
@@ -417,9 +412,11 @@ function VideoViewer(props: Props) {
       }
     });
 
-    if (position) {
+    if (position && !isLivestreamClaim) {
       player.currentTime(position);
     }
+
+    playerRef.current = player;
   }, playerReadyDependencyList); // eslint-disable-line
 
   return (
@@ -498,7 +495,9 @@ function VideoViewer(props: Props) {
         claimRewards={claimRewards}
         uri={uri}
         clearPosition={clearPosition}
-        centerPlayButton={centerPlayButton}
+        userClaimId={claim && claim.signing_channel && claim.signing_channel.claim_id}
+        isLivestreamClaim={isLivestreamClaim}
+        activeLivestreamForChannel={activeLivestreamForChannel}
       />
     </div>
   );

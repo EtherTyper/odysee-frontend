@@ -1,10 +1,9 @@
 import { connect } from 'react-redux';
-import { doResolveUris } from 'redux/actions/claims';
 import {
   selectClaimForUri,
-  makeSelectClaimForUri,
   selectClaimIsMine,
   selectFetchingMyChannels,
+  selectClaimsByUri,
 } from 'redux/selectors/claims';
 import {
   selectTopLevelCommentsForUri,
@@ -12,7 +11,7 @@ import {
   selectIsFetchingComments,
   selectIsFetchingCommentsById,
   selectIsFetchingReacts,
-  makeSelectTotalCommentsCountForUri,
+  selectTotalCommentsCountForUri,
   selectOthersReacts,
   selectMyReacts,
   selectCommentIdsForUri,
@@ -22,31 +21,23 @@ import {
 import { doCommentReset, doCommentList, doCommentById, doCommentReactList } from 'redux/actions/comments';
 import { selectActiveChannelClaim } from 'redux/selectors/app';
 import { getChannelIdFromClaim } from 'util/claim';
+import { doFetchUserMemberships } from 'redux/actions/user';
 import CommentsList from './view';
 
 const select = (state, props) => {
   const { uri } = props;
 
   const claim = selectClaimForUri(state, uri);
-  const channelId = getChannelIdFromClaim(claim);
-
   const activeChannelClaim = selectActiveChannelClaim(state);
-  const topLevelComments = selectTopLevelCommentsForUri(state, uri);
-
-  const resolvedComments =
-    topLevelComments && topLevelComments.length > 0
-      ? topLevelComments.filter(({ channel_url }) => makeSelectClaimForUri(channel_url)(state) !== undefined)
-      : [];
 
   return {
-    topLevelComments,
-    resolvedComments,
+    topLevelComments: selectTopLevelCommentsForUri(state, uri),
     allCommentIds: selectCommentIdsForUri(state, uri),
     pinnedComments: selectPinnedCommentsForUri(state, uri),
     topLevelTotalPages: makeSelectTopLevelTotalPagesForUri(uri)(state),
-    totalComments: makeSelectTotalCommentsCountForUri(uri)(state),
+    totalComments: selectTotalCommentsCountForUri(state, uri),
     claimId: claim && claim.claim_id,
-    channelId,
+    channelId: getChannelIdFromClaim(claim),
     claimIsMine: selectClaimIsMine(state, claim),
     isFetchingComments: selectIsFetchingComments(state),
     isFetchingCommentsById: selectIsFetchingCommentsById(state),
@@ -56,6 +47,7 @@ const select = (state, props) => {
     myReactsByCommentId: selectMyReacts(state),
     othersReactsById: selectOthersReacts(state),
     activeChannelId: activeChannelClaim && activeChannelClaim.claim_id,
+    claimsByUri: selectClaimsByUri(state),
   };
 };
 
@@ -64,7 +56,7 @@ const perform = {
   fetchComment: doCommentById,
   fetchReacts: doCommentReactList,
   resetComments: doCommentReset,
-  doResolveUris,
+  doFetchUserMemberships,
 };
 
 export default connect(select, perform)(CommentsList);

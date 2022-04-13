@@ -1,4 +1,6 @@
 // @flow
+import { useHistory } from 'react-router-dom';
+import { SEARCH_IN_LANGUAGE } from 'constants/hashes';
 import { SETTINGS_GRP } from 'constants/settings';
 import React from 'react';
 import * as SETTINGS from 'constants/settings';
@@ -8,20 +10,32 @@ import HomepageSelector from 'component/homepageSelector';
 import SettingLanguage from 'component/settingLanguage';
 import SettingsRow from 'component/settingsRow';
 import ThemeSelector from 'component/themeSelector';
-// $FlowFixMe
-import homepages from 'homepages';
 
 type Props = {
   clock24h: boolean,
   searchInLanguage: boolean,
   isAuthenticated: boolean,
   hideBalance: boolean,
+  hideTitleNotificationCount: boolean,
   setClientSetting: (string, boolean | string | number) => void,
   setSearchInLanguage: (boolean) => void,
 };
 
 export default function SettingAppearance(props: Props) {
-  const { clock24h, searchInLanguage, isAuthenticated, hideBalance, setClientSetting, setSearchInLanguage } = props;
+  const {
+    clock24h,
+    searchInLanguage,
+    isAuthenticated,
+    hideBalance,
+    hideTitleNotificationCount,
+    setClientSetting,
+    setSearchInLanguage,
+  } = props;
+  const {
+    location: { hash },
+  } = useHistory();
+  const highlightSearchInLanguage = hash === `#${SEARCH_IN_LANGUAGE}`;
+  const homepages = window.homepages || {};
 
   return (
     <>
@@ -43,7 +57,10 @@ export default function SettingAppearance(props: Props) {
               <SettingLanguage />
             </SettingsRow>
 
-            <SettingsRow title={__('Search only in the selected language by default')}>
+            <SettingsRow
+              title={__('Search only in the selected language by default')}
+              highlighted={highlightSearchInLanguage}
+            >
               <FormField
                 name="search-in-language"
                 type="checkbox"
@@ -75,6 +92,15 @@ export default function SettingAppearance(props: Props) {
                 />
               </SettingsRow>
             )}
+
+            <SettingsRow title={__('Hide notification count in title bar')}>
+              <FormField
+                type="checkbox"
+                name="hide_title_notification_count"
+                onChange={() => setClientSetting(SETTINGS.HIDE_TITLE_NOTIFICATION_COUNT, !hideTitleNotificationCount)}
+                checked={hideTitleNotificationCount}
+              />
+            </SettingsRow>
           </>
         }
       />

@@ -8,10 +8,11 @@ import { useIsLargeScreen } from 'effects/use-screensize';
 import { lazyImport } from 'util/lazyImport';
 import { LINKED_COMMENT_QUERY_PARAM } from 'constants/comment';
 import { parseURI, isURIValid } from 'util/lbryURI';
-import { SITE_TITLE, WELCOME_VERSION } from 'config';
+import { SITE_TITLE } from 'config';
 import LoadingBarOneOff from 'component/loadingBarOneOff';
 import { GetLinksData } from 'util/buildHomepage';
 import * as CS from 'constants/claim_search';
+import { buildUnseenCountStr } from 'util/notifications';
 
 import HomePage from 'page/home';
 
@@ -23,6 +24,7 @@ const BackupPage = lazyImport(() => import('page/backup' /* webpackChunkName: "b
 const Code2257Page = lazyImport(() => import('web/page/code2257' /* webpackChunkName: "code2257" */));
 const PrivacyPolicyPage = lazyImport(() => import('web/page/privacypolicy' /* webpackChunkName: "privacypolicy" */));
 const TOSPage = lazyImport(() => import('web/page/tos' /* webpackChunkName: "tos" */));
+const FypPage = lazyImport(() => import('web/page/fyp' /* webpackChunkName: "fyp" */));
 const YouTubeTOSPage = lazyImport(() => import('web/page/youtubetos' /* webpackChunkName: "youtubetos" */));
 // @endif
 
@@ -48,6 +50,9 @@ const ChannelsFollowingDiscoverPage = lazyImport(() =>
 const ChannelsFollowingPage = lazyImport(() =>
   import('page/channelsFollowing' /* webpackChunkName: "channelsFollowing" */)
 );
+const ChannelsFollowingManage = lazyImport(() =>
+  import('page/channelsFollowingManage' /* webpackChunkName: "channelsFollowing" */)
+);
 const ChannelsPage = lazyImport(() => import('page/channels' /* webpackChunkName: "channels" */));
 const CheckoutPage = lazyImport(() => import('page/checkoutPage' /* webpackChunkName: "checkoutPage" */));
 const CreatorDashboard = lazyImport(() => import('page/creatorDashboard' /* webpackChunkName: "creatorDashboard" */));
@@ -69,13 +74,15 @@ const LiveStreamSetupPage = lazyImport(() => import('page/livestreamSetup' /* we
 const LivestreamCurrentPage = lazyImport(() =>
   import('page/livestreamCurrent' /* webpackChunkName: "livestreamCurrent" */)
 );
+const OdyseeMembershipPage = lazyImport(() =>
+  import('page/odyseeMembership' /* webpackChunkName: "odyseeMembership" */)
+);
 const OwnComments = lazyImport(() => import('page/ownComments' /* webpackChunkName: "ownComments" */));
 const PasswordResetPage = lazyImport(() => import('page/passwordReset' /* webpackChunkName: "passwordReset" */));
 const PasswordSetPage = lazyImport(() => import('page/passwordSet' /* webpackChunkName: "passwordSet" */));
 const PublishPage = lazyImport(() => import('page/publish' /* webpackChunkName: "publish" */));
 const ReportContentPage = lazyImport(() => import('page/reportContent' /* webpackChunkName: "reportContent" */));
 const ReportPage = lazyImport(() => import('page/report' /* webpackChunkName: "report" */));
-const RepostNew = lazyImport(() => import('page/repost' /* webpackChunkName: "repost" */));
 const RewardsPage = lazyImport(() => import('page/rewards' /* webpackChunkName: "rewards" */));
 const RewardsVerifyPage = lazyImport(() => import('page/rewardsVerify' /* webpackChunkName: "rewardsVerify" */));
 const SearchPage = lazyImport(() => import('page/search' /* webpackChunkName: "search" */));
@@ -97,7 +104,6 @@ const TagsFollowingManagePage = lazyImport(() =>
 const TagsFollowingPage = lazyImport(() => import('page/tagsFollowing' /* webpackChunkName: "tagsFollowing" */));
 const TopPage = lazyImport(() => import('page/top' /* webpackChunkName: "top" */));
 const UpdatePasswordPage = lazyImport(() => import('page/passwordUpdate' /* webpackChunkName: "passwordUpdate" */));
-const Welcome = lazyImport(() => import('page/welcome' /* webpackChunkName: "welcome" */));
 const YoutubeSyncPage = lazyImport(() => import('page/youtubeSync' /* webpackChunkName: "youtubeSync" */));
 
 // Tell the browser we are handling scroll restoration
@@ -131,6 +137,8 @@ type Props = {
   hasUnclaimedRefereeReward: boolean,
   homepageData: any,
   wildWestDisabled: boolean,
+  unseenCount: number,
+  hideTitleNotificationCount: boolean,
 };
 
 type PrivateRouteProps = Props & {
@@ -164,13 +172,14 @@ function AppRouter(props: Props) {
     history,
     uri,
     title,
-    welcomeVersion,
     hasNavigated,
     setHasNavigated,
     hasUnclaimedRefereeReward,
     setReferrer,
     homepageData,
     wildWestDisabled,
+    unseenCount,
+    hideTitleNotificationCount,
   } = props;
 
   const { entries, listen, action: historyAction } = history;
@@ -190,7 +199,9 @@ function AppRouter(props: Props) {
       <Route
         key={dynamicRouteProps.route}
         path={dynamicRouteProps.route}
-        component={(routerProps) => <DiscoverPage {...routerProps} dynamicRouteProps={dynamicRouteProps} />}
+        component={(routerProps) => (
+          <DiscoverPage {...routerProps} dynamicRouteProps={dynamicRouteProps} hideRepostRibbon />
+        )}
       />
     ));
   }, [homepageData, isLargeScreen]);
@@ -237,10 +248,10 @@ function AppRouter(props: Props) {
       document.title = getDefaultTitle(pathname);
     }
 
-    // @if TARGET='app'
-    entries[entryIndex].title = document.title;
-    // @endif
-  }, [pathname, entries, entryIndex, title, uri]);
+    if (unseenCount > 0 && !hideTitleNotificationCount) {
+      document.title = `(${buildUnseenCountStr(unseenCount)}) ${document.title}`;
+    }
+  }, [pathname, entries, entryIndex, title, uri, unseenCount]);
 
   useEffect(() => {
     if (!hasLinkedCommentInUrl) {
@@ -267,9 +278,6 @@ function AppRouter(props: Props) {
   return (
     <React.Suspense fallback={<LoadingBarOneOff />}>
       <Switch>
-        {/* @if TARGET='app' */}
-        {welcomeVersion < WELCOME_VERSION && <Route path="/*" component={Welcome} />}
-        {/* @endif */}
         <Redirect
           from={`/$/${PAGES.DEPRECATED__CHANNELS_FOLLOWING_MANAGE}`}
           to={`/$/${PAGES.CHANNELS_FOLLOWING_DISCOVER}`}
@@ -291,7 +299,6 @@ function AppRouter(props: Props) {
         <Route path={`/$/${PAGES.AUTH_PASSWORD_SET}`} exact component={PasswordSetPage} />
         <Route path={`/$/${PAGES.AUTH}`} exact component={SignUpPage} />
         <Route path={`/$/${PAGES.AUTH}/*`} exact component={SignUpPage} />
-        <Route path={`/$/${PAGES.WELCOME}`} exact component={Welcome} />
 
         <Route path={`/$/${PAGES.HELP}`} exact component={HelpPage} />
         {/* @if TARGET='app' */}
@@ -301,6 +308,7 @@ function AppRouter(props: Props) {
         <Route path={`/$/${PAGES.CODE_2257}`} exact component={Code2257Page} />
         <Route path={`/$/${PAGES.PRIVACY_POLICY}`} exact component={PrivacyPolicyPage} />
         <Route path={`/$/${PAGES.TOS}`} exact component={TOSPage} />
+        <Route path={`/$/${PAGES.FYP}`} exact component={FypPage} />
         <Route path={`/$/${PAGES.YOUTUBE_TOS}`} exact component={YouTubeTOSPage} />
         {/* @endif */}
         <Route path={`/$/${PAGES.AUTH_VERIFY}`} exact component={SignInVerifyPage} />
@@ -330,9 +338,14 @@ function AppRouter(props: Props) {
           path={`/$/${PAGES.CHANNELS_FOLLOWING_DISCOVER}`}
           component={ChannelsFollowingDiscoverPage}
         />
+        <PrivateRoute
+          {...props}
+          exact
+          path={`/$/${PAGES.CHANNELS_FOLLOWING_MANAGE}`}
+          component={ChannelsFollowingManage}
+        />
         <PrivateRoute {...props} path={`/$/${PAGES.INVITE}`} component={InvitePage} />
         <PrivateRoute {...props} path={`/$/${PAGES.CHANNEL_NEW}`} component={ChannelNew} />
-        <PrivateRoute {...props} path={`/$/${PAGES.REPOST_NEW}`} component={RepostNew} />
         <PrivateRoute {...props} path={`/$/${PAGES.UPLOADS}`} component={FileListPublished} />
         <PrivateRoute {...props} path={`/$/${PAGES.CREATOR_DASHBOARD}`} component={CreatorDashboard} />
         <PrivateRoute {...props} path={`/$/${PAGES.UPLOAD}`} component={PublishPage} />
@@ -356,6 +369,7 @@ function AppRouter(props: Props) {
         <PrivateRoute {...props} path={`/$/${PAGES.NOTIFICATIONS}`} component={NotificationsPage} />
         <PrivateRoute {...props} path={`/$/${PAGES.AUTH_WALLET_PASSWORD}`} component={SignInWalletPasswordPage} />
         <PrivateRoute {...props} path={`/$/${PAGES.SETTINGS_OWN_COMMENTS}`} component={OwnComments} />
+        <PrivateRoute {...props} path={`/$/${PAGES.ODYSEE_MEMBERSHIP}`} component={OdyseeMembershipPage} />
 
         <Route path={`/$/${PAGES.POPOUT}/:channelName/:streamName`} component={PopoutChatPage} />
 

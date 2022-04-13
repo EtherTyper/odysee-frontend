@@ -6,7 +6,9 @@ import { Global } from '@emotion/react';
 // $FlowFixMe
 import { grey } from '@mui/material/colors';
 
-import { HEADER_HEIGHT_MOBILE } from 'component/fileRenderMobile/view';
+import { HEADER_HEIGHT_MOBILE } from 'component/fileRenderFloating/view';
+import { PRIMARY_PLAYER_WRAPPER_CLASS, PRIMARY_IMAGE_WRAPPER_CLASS } from 'page/file/view';
+import { getMaxLandscapeHeight } from 'component/fileRenderFloating/helper-functions';
 import { SwipeableDrawer as MUIDrawer } from '@mui/material';
 import * as ICONS from 'constants/icons';
 import * as React from 'react';
@@ -17,32 +19,43 @@ const DRAWER_PULLER_HEIGHT = 42;
 
 type Props = {
   children: Node,
-  open: boolean,
-  theme: string,
-  mobilePlayerDimensions?: { height: number },
   title: any,
   hasSubtitle?: boolean,
   actions?: any,
+  // -- redux --
+  open: boolean,
+  theme: string,
   toggleDrawer: () => void,
 };
 
 export default function SwipeableDrawer(props: Props) {
-  const { mobilePlayerDimensions, title, hasSubtitle, children, open, theme, actions, toggleDrawer } = props;
+  const { title, hasSubtitle, children, open, theme, actions, toggleDrawer } = props;
 
   const [coverHeight, setCoverHeight] = React.useState();
 
-  const videoHeight = coverHeight || (mobilePlayerDimensions ? mobilePlayerDimensions.height : 0);
+  const videoHeight = coverHeight || getMaxLandscapeHeight() || 0;
+
+  const handleResize = React.useCallback(() => {
+    const element =
+      document.querySelector(`.${PRIMARY_IMAGE_WRAPPER_CLASS}`) ||
+      document.querySelector(`.${PRIMARY_PLAYER_WRAPPER_CLASS}`);
+
+    if (!element) return;
+
+    const rect = element.getBoundingClientRect();
+    setCoverHeight(rect.height);
+  }, []);
 
   React.useEffect(() => {
-    if (open && !mobilePlayerDimensions) {
-      const element = document.querySelector(`.file-page__video-container`);
+    // Drawer will follow the cover image on resize, so it's always visible
+    if (open) {
+      handleResize();
 
-      if (element) {
-        const rect = element.getBoundingClientRect();
-        setCoverHeight(rect.height);
-      }
+      window.addEventListener('resize', handleResize);
+
+      return () => window.removeEventListener('resize', handleResize);
     }
-  }, [coverHeight, mobilePlayerDimensions, open]);
+  }, [handleResize, open]);
 
   // Reset scroll position when opening: avoid broken position where
   // the drawer is lower than the video
@@ -82,12 +95,12 @@ export default function SwipeableDrawer(props: Props) {
 }
 
 type GlobalStylesProps = {
-  open?: boolean,
+  open: boolean,
   videoHeight: number,
 };
 
-const DrawerGlobalStyles = (globalStylesProps: GlobalStylesProps) => {
-  const { open, videoHeight } = globalStylesProps;
+const DrawerGlobalStyles = (props: GlobalStylesProps) => {
+  const { open, videoHeight } = props;
 
   return (
     <Global
@@ -114,8 +127,8 @@ type PullerProps = {
   theme: string,
 };
 
-const Puller = (pullerProps: PullerProps) => {
-  const { theme } = pullerProps;
+const Puller = (props: PullerProps) => {
+  const { theme } = props;
 
   return (
     <span className="swipeable-drawer__puller" style={{ backgroundColor: theme === 'light' ? grey[300] : grey[800] }} />
@@ -129,8 +142,8 @@ type HeaderProps = {
   toggleDrawer: () => void,
 };
 
-const HeaderContents = (headerProps: HeaderProps) => {
-  const { title, hasSubtitle, actions, toggleDrawer } = headerProps;
+const HeaderContents = (props: HeaderProps) => {
+  const { title, hasSubtitle, actions, toggleDrawer } = props;
 
   return (
     <div
@@ -146,24 +159,5 @@ const HeaderContents = (headerProps: HeaderProps) => {
         <Button icon={ICONS.REMOVE} iconSize={16} onClick={toggleDrawer} />
       </div>
     </div>
-  );
-};
-
-type ExpandButtonProps = {
-  label: any,
-  toggleDrawer: () => void,
-};
-
-export const DrawerExpandButton = (expandButtonProps: ExpandButtonProps) => {
-  const { label, toggleDrawer } = expandButtonProps;
-
-  return (
-    <Button
-      className="swipeable-drawer__expand-button"
-      label={label}
-      button="primary"
-      icon={ICONS.CHAT}
-      onClick={toggleDrawer}
-    />
   );
 };

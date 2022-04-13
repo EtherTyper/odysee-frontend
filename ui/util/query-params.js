@@ -77,15 +77,24 @@ export const getSearchQueryString = (query: string, options: any = {}) => {
   }
 
   const additionalOptions = {};
-  const { related_to } = options;
-  const { nsfw } = options;
-  const { free_only } = options;
-  const { channel_id } = options;
+  const { related_to, nsfw, free_only, gid, uuid } = options;
 
-  if (related_to) additionalOptions[SEARCH_OPTIONS.RELATED_TO] = related_to;
-  if (free_only) additionalOptions[SEARCH_OPTIONS.PRICE_FILTER_FREE] = true;
-  if (nsfw === false) additionalOptions[SEARCH_OPTIONS.INCLUDE_MATURE] = false;
-  if (channel_id) additionalOptions[SEARCH_OPTIONS.CHANNEL_ID] = channel_id;
+  if (related_to) {
+    additionalOptions[SEARCH_OPTIONS.RELATED_TO] = related_to;
+
+    if (gid && uuid) {
+      additionalOptions['gid'] = gid;
+      additionalOptions['uuid'] = uuid;
+    }
+  }
+
+  if (free_only) {
+    additionalOptions[SEARCH_OPTIONS.PRICE_FILTER_FREE] = true;
+  }
+
+  if (nsfw === false) {
+    additionalOptions[SEARCH_OPTIONS.INCLUDE_MATURE] = false;
+  }
 
   if (additionalOptions) {
     Object.keys(additionalOptions).forEach((key) => {

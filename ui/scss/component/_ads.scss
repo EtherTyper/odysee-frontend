@@ -16,55 +16,123 @@
 }
 
 // Inline Video Ads
+// The default is coded for list-layout;
+// --tile and other modifiers adjust accordingly.
 .ads__claim-item {
   border-bottom: 1px solid var(--color-border);
   margin-top: var(--spacing-m);
+  margin-bottom: var(--spacing-m);
   padding: var(--spacing-m);
   background-color: var(--color-ads-background);
   border-radius: var(--border-radius);
+  display: flex;
   flex-direction: row;
-  flex-wrap: wrap;
   width: 100%;
 
   .ad__container {
-    width: 314px;
-    height: 201px;
-  }
-
-  > div,
-  ins {
-    width: 100%;
-    position: relative !important;
-    max-width: 30rem;
-    min-width: 15rem;
-  }
-
-  .ads__injected-video {
     aspect-ratio: 16 / 9;
-  }
+    $minWidth: calc(var(--file-list-thumbnail-width) * 0.8);
+    min-width: $minWidth;
 
-  .avp-p-gui {
-    z-index: 1 !important;
-  }
+    video {
+      width: 100% !important;
+      height: 100% !important;
+    }
 
-  @media (max-width: $breakpoint-small) {
-    flex-direction: column;
+    @media (max-width: $breakpoint-small) {
+      $width: calc(var(--file-list-thumbnail-width) * 0.8);
+      width: $width;
+    }
 
-    > div {
-      width: 100%;
+    @media (min-width: $breakpoint-small) and (max-width: $breakpoint-large) {
+      $width: calc(var(--file-list-thumbnail-width) * 1.2);
+      width: $width;
+    }
+
+    @media (min-width: $breakpoint-large) {
+      $width: calc(var(--file-list-thumbnail-width) * 1.2);
+      width: $width;
+    }
+
+    div[style*='transform-origin: left bottom'] {
+      // [Floating ad]
+      // Hide for now since can't get it to work in a consistent manner between:
+      //   - EU and non-EU version
+      //   - issues in Firefox
+      display: none !important;
+    }
+
+    #aniBox {
+      transition: unset !important;
+    }
+
+    #aniBox[style*='height: 1px'] {
+      display: none;
+    }
+
+    #aniBox,
+    #av-container {
+      width: 100% !important;
+      height: unset !important;
+      aspect-ratio: 16 / 9 !important;
+      border-radius: var(--border-radius);
+    }
+
+    .avp-p-wrapper > div {
+      border-radius: var(--border-radius) !important; // Needed for EU only
     }
   }
 }
 
+.ads__claim-item--tile {
+  @extend .card;
+  @extend .claim-preview--tile;
+  flex-direction: column;
+
+  padding: 0;
+  background-color: unset;
+  border-bottom: unset;
+
+  .ads__claim-text {
+    margin: var(--spacing-s) 0 0 0;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+  }
+
+  .ad__container {
+    width: 100%;
+  }
+
+  .ads__claim-text {
+    max-width: 100%;
+  }
+}
+
+.ads__claim-item--recommended {
+  padding: var(--spacing-s);
+
+  @media (min-width: $breakpoint-medium) {
+    margin-bottom: 0;
+  }
+}
+
 .ads__claim-text {
-  margin-top: 5px;
+  overflow: hidden;
+  max-width: 50%;
+  margin: var(--spacing-m) 0 var(--spacing-m) var(--spacing-s);
   display: flex;
   flex-direction: column;
   justify-content: center;
+  color: var(--color-text-subtitle);
 }
 
 .ads__claim-text--small {
   font-size: var(--font-small);
+
+  @media (max-width: $breakpoint-small) {
+    font-size: var(--font-xsmall);
+  }
 }
 
 // Pre-roll ads
@@ -118,4 +186,14 @@
 
 .exp-ui__logo {
   display: none;
+}
+
+// ****************************************************************************
+// Outbrain
+// ****************************************************************************
+
+.ob-widget-items-container {
+  padding-left: var(--spacing-xs);
+  padding-right: var(--spacing-xs);
+  border-radius: var(--border-radius);
 }

@@ -4,10 +4,11 @@ import * as REACTION_TYPES from 'constants/reactions';
 import * as PAGES from 'constants/pages';
 import { SORT_BY, BLOCK_LEVEL } from 'constants/comment';
 import Lbry from 'lbry';
+import { resolveApiMessage } from 'util/api-message';
 import { parseURI, buildURI, isURIEqual } from 'util/lbryURI';
-import { devToast, doFailedSignatureToast, resolveCommentronError } from 'util/commentron-error';
+import { devToast, doFailedSignatureToast } from 'util/toast-wrappers';
 import { selectClaimForUri, selectClaimsByUri, selectMyChannelClaims } from 'redux/selectors/claims';
-import { doResolveUris, doClaimSearch } from 'redux/actions/claims';
+import { doResolveUris, doClaimSearch, doResolveClaimIds } from 'redux/actions/claims';
 import { doToast, doSeeNotifications } from 'redux/actions/notifications';
 import {
   selectMyReactsForComment,
@@ -19,6 +20,7 @@ import {
 import { makeSelectNotificationForCommentId } from 'redux/selectors/notifications';
 import { selectActiveChannelClaim } from 'redux/selectors/app';
 import { toHex } from 'util/hex';
+import { getChannelFromClaim } from 'util/claim';
 import Comments from 'comments';
 import { selectPrefsReady } from 'redux/selectors/sync';
 import { doAlertWaitingForSync } from 'redux/actions/app';
@@ -30,86 +32,76 @@ const MENTION_REGEX = /(?:^| |\n)@[^\s=&#$@%?:;/"<>%{}|^~[]*(?::[\w]+)?/gm;
 
 export function doCommentList(
   uri: string,
-  parentId: string,
+  parentId: ?string,
   page: number = 1,
   pageSize: number = 99999,
-  sortBy: number = SORT_BY.NEWEST
+  sortBy: ?number = SORT_BY.NEWEST,
+  isLivestream?: boolean
 ) {
   return (dispatch: Dispatch, getState: GetState) => {
     const state = getState();
-    const claim = selectClaimsByUri(state)[uri];
-    const claimId = claim ? claim.claim_id : null;
+    const claim = selectClaimForUri(state, uri);
+    const { claim_id: claimId } = claim || {};
 
     if (!claimId) {
-      dispatch({
-        type: ACTIONS.COMMENT_LIST_FAILED,
-        data: 'unable to find claim for uri',
-      });
-      return;
+      return dispatch({ type: ACTIONS.COMMENT_LIST_FAILED, data: 'unable to find claim for uri' });
     }
 
-    dispatch({
-      type: ACTIONS.COMMENT_LIST_STARTED,
-      data: {
-        parentId,
-      },
-    });
+    dispatch({ type: ACTIONS.COMMENT_LIST_STARTED, data: { parentId } });
 
     // Adding 'channel_id' and 'channel_name' enables "CreatorSettings > commentsEnabled".
-    const creatorChannelClaim = claim.value_type === 'channel' ? claim : claim.signing_channel;
+    const creatorChannelClaim = getChannelFromClaim(claim);
+    const { claim_id: creatorClaimId, name: channelName } = creatorChannelClaim || {};
 
     return Comments.comment_list({
       page,
       claim_id: claimId,
       page_size: pageSize,
-      parent_id: parentId || undefined,
+      parent_id: parentId,
       top_level: !parentId,
-      channel_id: creatorChannelClaim ? creatorChannelClaim.claim_id : undefined,
-      channel_name: creatorChannelClaim ? creatorChannelClaim.name : undefined,
+      channel_id: creatorClaimId,
+      channel_name: channelName,
       sort_by: sortBy,
     })
       .then((result: CommentListResponse) => {
         const { items: comments, total_items, total_filtered_items, total_pages } = result;
-        dispatch({
-          type: ACTIONS.COMMENT_LIST_COMPLETED,
-          data: {
-            comments,
-            parentId,
-            totalItems: total_items,
-            totalFilteredItems: total_filtered_items,
-            totalPages: total_pages,
-            claimId: claimId,
-            creatorClaimId: creatorChannelClaim ? creatorChannelClaim.claim_id : undefined,
-            uri: uri,
-          },
-        });
 
-        return result;
+        const returnResult = () => {
+          dispatch({
+            type: ACTIONS.COMMENT_LIST_COMPLETED,
+            data: {
+              comments,
+              parentId,
+              totalItems: total_items,
+              totalFilteredItems: total_filtered_items,
+              totalPages: total_pages,
+              claimId,
+              creatorClaimId,
+              uri,
+            },
+          });
+          return result;
+        };
+
+        // Batch resolve comment authors
+        const commentChannelIds = comments && comments.map((comment) => comment.channel_id || '');
+        if (commentChannelIds && !isLivestream) {
+          return dispatch(doResolveClaimIds(commentChannelIds)).finally(() => returnResult());
+        }
+
+        return returnResult();
       })
       .catch((error) => {
-        switch (error.message) {
+        const { message } = error;
+
+        switch (message) {
           case 'comments are disabled by the creator':
-            dispatch({
-              type: ACTIONS.COMMENT_LIST_COMPLETED,
-              data: {
-                creatorClaimId: creatorChannelClaim ? creatorChannelClaim.claim_id : undefined,
-                disabled: true,
-              },
-            });
-            break;
-
+            return dispatch({ type: ACTIONS.COMMENT_LIST_COMPLETED, data: { creatorClaimId, disabled: true } });
           case FETCH_API_FAILED_TO_FETCH:
-            dispatch(
-              doToast({
-                isError: true,
-                message: __('Failed to fetch comments.'),
-              })
-            );
-            dispatch({ type: ACTIONS.COMMENT_LIST_FAILED, data: error });
-            break;
-
+            dispatch(doToast({ isError: true, message: __('Failed to fetch comments.') }));
+            return dispatch({ type: ACTIONS.COMMENT_LIST_FAILED, data: error });
           default:
-            dispatch(doToast({ isError: true, message: `${error.message}` }));
+            dispatch(doToast({ isError: true, message: `${message}` }));
             dispatch({ type: ACTIONS.COMMENT_LIST_FAILED, data: error });
         }
       });
@@ -119,7 +111,7 @@ export function doCommentList(
 export function doCommentListOwn(
   channelId: string,
   page: number = 1,
-  pageSize: number = 99999,
+  pageSize: number = 10,
   sortBy: number = SORT_BY.NEWEST_NO_PINS
 ) {
   return async (dispatch: Dispatch, getState: GetState) => {
@@ -141,6 +133,10 @@ export function doCommentListOwn(
       console.error('Failed to sign channel name.'); // eslint-disable-line
       return;
     }
+
+    // @if process.env.NODE_ENV!='production'
+    console.assert(pageSize <= 50, `claim_search can't resolve > 50 (pageSize=${pageSize})`);
+    // @endif
 
     dispatch({
       type: ACTIONS.COMMENT_LIST_STARTED,
@@ -168,7 +164,7 @@ export function doCommentListOwn(
         dispatch(
           doClaimSearch({
             page: 1,
-            page_size: 20,
+            page_size: pageSize,
             no_totals: true,
             claim_ids: comments.map((c) => c.claim_id),
           })
@@ -181,9 +177,15 @@ export function doCommentListOwn(
                 totalItems: total_items,
                 totalFilteredItems: total_filtered_items,
                 totalPages: total_pages,
-                uri: channelClaim.canonical_url, // hijack "Discussion Page"
-                claimId: channelClaim.claim_id, // hijack "Discussion Page"
+                uri: channelClaim.canonical_url, // hijack Discussion Page ¹
+                claimId: channelClaim.claim_id, // hijack Discussion Page ¹
               },
+              // ¹ Comments are currently stored in an object with the key being
+              // the content claim_id; so as a quick solution, we are using the
+              // channel's claim_id to store Own Comments, which is the same way
+              // as Discussion Page. This idea works based on the assumption
+              // that both Own Comments and Discussion will never appear
+              // simultaneously.
             });
           })
           .catch((err) => {
@@ -562,7 +564,7 @@ export function doCommentCreate(uri: string, livestream: boolean, params: Commen
       })
       .catch((error) => {
         dispatch({ type: ACTIONS.COMMENT_CREATE_FAILED, data: error });
-        dispatch(doToast(resolveCommentronError(error.message)));
+        dispatch(doToast({ message: resolveApiMessage(error.message), isError: true }));
         return Promise.reject(error);
       });
   };

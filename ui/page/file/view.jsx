@@ -13,16 +13,16 @@ import FileRenderDownload from 'component/fileRenderDownload';
 import RecommendedContent from 'component/recommendedContent';
 import CollectionContent from 'component/collectionContentSidebar';
 import Button from 'component/button';
-import I18nMessage from 'component/i18nMessage';
 import Empty from 'component/common/empty';
 import SwipeableDrawer from 'component/swipeableDrawer';
-import { DrawerExpandButton } from 'component/swipeableDrawer/view';
-import { useIsMobile } from 'effects/use-screensize';
+import DrawerExpandButton from 'component/swipeableDrawerExpand';
+import { useIsMobile, useIsMobileLandscape } from 'effects/use-screensize';
 
 const CommentsList = lazyImport(() => import('component/commentsList' /* webpackChunkName: "comments" */));
 const PostViewer = lazyImport(() => import('component/postViewer' /* webpackChunkName: "postViewer" */));
 
 export const PRIMARY_PLAYER_WRAPPER_CLASS = 'file-page__video-container';
+export const PRIMARY_IMAGE_WRAPPER_CLASS = 'file-render__img-container';
 
 type Props = {
   costInfo: ?{ includesData: boolean, cost: number },
@@ -40,6 +40,7 @@ type Props = {
   contentCommentsDisabled: boolean,
   isLivestream: boolean,
   position: number,
+  audioVideoDuration: ?number,
   commentsListTitle: string,
   settingsByChannelId: { [channelId: string]: PerChannelSettings },
   isPlaying?: boolean,
@@ -48,6 +49,7 @@ type Props = {
   doSetPrimaryUri: (uri: ?string) => void,
   clearPosition: (uri: string) => void,
   doClearPlayingUri: () => void,
+  doToggleAppDrawer: () => void,
 };
 
 export default function FilePage(props: Props) {
@@ -68,18 +70,18 @@ export default function FilePage(props: Props) {
     collectionId,
     isLivestream,
     position,
+    audioVideoDuration,
     commentsListTitle,
     settingsByChannelId,
     doFetchCostInfoForUri,
     doSetContentHistoryItem,
     doSetPrimaryUri,
     clearPosition,
+    doToggleAppDrawer,
   } = props;
 
   const isMobile = useIsMobile();
-
-  // Auto-open the drawer on Mobile view if there is a linked comment
-  const [showComments, setShowComments] = React.useState(linkedCommentId);
+  const isLandscapeRotated = useIsMobileLandscape();
 
   const channelSettings = channelId ? settingsByChannelId[channelId] : undefined;
   const commentSettingDisabled = channelSettings && !channelSettings.comments_enabled;
@@ -87,13 +89,24 @@ export default function FilePage(props: Props) {
   const hasFileInfo = fileInfo !== undefined;
   const isMarkdown = renderMode === RENDER_MODES.MARKDOWN;
   const videoPlayedEnoughToResetPosition = React.useMemo(() => {
+    // I've never seen 'fileInfo' contain metadata lately, but retaining as historical fallback.
     const durationInSecs =
-      fileInfo && fileInfo.metadata && fileInfo.metadata.video ? fileInfo.metadata.video.duration : 0;
+      audioVideoDuration ||
+      (fileInfo && fileInfo.metadata && fileInfo.metadata.video ? fileInfo.metadata.video.duration : 0);
     const isVideoTooShort = durationInSecs <= 45;
     const almostFinishedPlaying = position / durationInSecs >= VIDEO_ALMOST_FINISHED_THRESHOLD;
 
     return durationInSecs ? isVideoTooShort || almostFinishedPlaying : false;
-  }, [fileInfo, position]);
+  }, [audioVideoDuration, fileInfo, position]);
+
+  React.useEffect(() => {
+    if (linkedCommentId && isMobile) {
+      doToggleAppDrawer();
+    }
+    // only on mount, otherwise clicking on a comments timestamp and linking it
+    // would trigger the drawer
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   React.useEffect(() => {
     // always refresh file info when entering file page to see if we have the file
@@ -164,7 +177,7 @@ export default function FilePage(props: Props) {
     if (renderMode === RENDER_MODES.IMAGE) {
       return (
         <>
-          <div className="file-render--img-container">
+          <div className={PRIMARY_IMAGE_WRAPPER_CLASS}>
             <FileRenderInitiator uri={uri} />
             <FileRenderInline uri={uri} />
           </div>
@@ -209,10 +222,9 @@ export default function FilePage(props: Props) {
               {claimIsMine && isLivestream && (
                 <div className="livestream__creator-message">
                   <h4>{__('Only visible to you')}</h4>
-                  <I18nMessage>
-                    People who view this link will be redirected to your livestream. Make sure to use this for sharing
-                    so your title and thumbnail are displayed properly.
-                  </I18nMessage>
+                  {__(
+                    'People who view this link will be redirected to your livestream. Make sure to use this for sharing so your title and thumbnail are displayed properly.'
+                  )}
                   <div className="section__actions">
                     <Button button="primary" navigate={`/$/${PAGES.LIVESTREAM}`} label={__('View livestream')} />
                   </div>
@@ -226,17 +238,13 @@ export default function FilePage(props: Props) {
                   <Empty {...emptyMsgProps} text={__('The creator of this content has disabled comments.')} />
                 ) : commentSettingDisabled ? (
                   <Empty {...emptyMsgProps} text={__('This channel has disabled comments on their page.')} />
-                ) : isMobile ? (
+                ) : isMobile && !isLandscapeRotated ? (
                   <>
-                    <SwipeableDrawer
-                      open={Boolean(showComments)}
-                      toggleDrawer={() => setShowComments(!showComments)}
-                      title={commentsListTitle}
-                    >
+                    <SwipeableDrawer title={commentsListTitle}>
                       <CommentsList {...commentsListProps} />
                     </SwipeableDrawer>
 
-                    <DrawerExpandButton label={commentsListTitle} toggleDrawer={() => setShowComments(!showComments)} />
+                    <DrawerExpandButton label={commentsListTitle} />
                   </>
                 ) : (
                   <CommentsList {...commentsListProps} />

@@ -33,6 +33,7 @@ declare type SearchState = {
   hasReachedMaxResultsLength: {},
   searching: boolean,
   mentionQuery: string,
+  personalRecommendations: { gid: string, uris: Array<string>, fetched: boolean },
 };
 
 declare type SearchSuccess = {
@@ -43,11 +44,15 @@ declare type SearchSuccess = {
     size: number,
     uris: Array<string>,
     recsys: string,
-    query: string,
   },
 };
 
 declare type UpdateSearchOptions = {
   type: ACTIONS.UPDATE_SEARCH_OPTIONS,
   data: SearchOptions,
+};
+
+declare type FypParam = {
+  gid: string,
+  uuid: string,
 };

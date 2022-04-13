@@ -9,6 +9,8 @@ export const selectEmailAlreadyExists = (state) => selectState(state).emailAlrea
 export const selectEmailDoesNotExist = (state) => selectState(state).emailDoesNotExist;
 export const selectResendingVerificationEmail = (state) => selectState(state).resendingVerificationEmail;
 
+export const selectHomepageFetched = (state) => selectState(state).homepageFetched;
+
 export const selectUserEmail = createSelector(selectUser, (user) =>
   user ? user.primary_email || user.latest_claimed_email : null
 );
@@ -104,6 +106,32 @@ export const selectYouTubeImportError = (state) => selectState(state).youtubeCha
 export const selectSetReferrerPending = (state) => selectState(state).referrerSetIsPending;
 export const selectSetReferrerError = (state) => selectState(state).referrerSetError;
 
+export const selectOdyseeMembershipName = (state) => selectState(state).odyseeMembershipName;
+
+export const selectOdyseeMembershipIsPremiumPlus = (state) => {
+  const odyseeMembershipName = selectState(state).odyseeMembershipName;
+  if (!odyseeMembershipName) return undefined;
+  return selectState(state).odyseeMembershipName === 'Premium+';
+};
+
+/**
+ * selectHasOdyseeMembership
+ *
+ * @param state
+ * @returns 'undefined' if not yet fetched; boolean otherwise.
+ */
+export const selectHasOdyseeMembership = (state) => {
+  // @if process.env.NODE_ENV!='production'
+  const override = window.localStorage.getItem('hasMembershipOverride');
+  if (override) {
+    return override === 'true';
+  }
+  // @endif
+
+  const membership = selectOdyseeMembershipName(state);
+  return membership === undefined ? membership : Boolean(membership);
+};
+
 export const selectYouTubeImportVideosComplete = createSelector(selectState, (state) => {
   const total = state.youtubeChannelImportTotal;
   const complete = state.youtubeChannelImportComplete || 0;
@@ -114,3 +142,7 @@ export const selectYouTubeImportVideosComplete = createSelector(selectState, (st
 });
 
 export const makeSelectUserPropForProp = (prop) => createSelector(selectUser, (user) => (user ? user[prop] : null));
+
+export const selectUserLocale = (state) => selectState(state).locale;
+
+export const selectUserCountry = createSelector(selectUserLocale, (locale) => locale?.country);

@@ -8,7 +8,7 @@
   File upload is carried out in the background by that function.
  */
 
-import { SITE_NAME, ENABLE_NO_SOURCE_CLAIMS, SIMPLE_SITE, CHANNEL_STAKED_LEVEL_LIVESTREAM } from 'config';
+import { SITE_NAME, ENABLE_NO_SOURCE_CLAIMS, SIMPLE_SITE } from 'config';
 import React, { useEffect, useState } from 'react';
 import Lbry from 'lbry';
 import { buildURI, isURIValid, isNameValid } from 'util/lbryURI';
@@ -89,7 +89,6 @@ type Props = {
   activeChannelClaim: ?ChannelClaim,
   incognito: boolean,
   user: ?User,
-  activeChannelStakedLevel: number,
   isLivestreamClaim: boolean,
   isPostClaim: boolean,
   permanentUrl: ?string,
@@ -130,7 +129,6 @@ function PublishForm(props: Props) {
     activeChannelClaim,
     incognito,
     user,
-    activeChannelStakedLevel,
     isLivestreamClaim,
     isPostClaim,
     permanentUrl,
@@ -146,11 +144,9 @@ function PublishForm(props: Props) {
   const TYPE_PARAM = 'type';
   const uploadType = urlParams.get(TYPE_PARAM);
   const _uploadType = uploadType && uploadType.toLowerCase();
-  const enableLivestream =
-    ENABLE_NO_SOURCE_CLAIMS &&
-    user &&
-    !user.odysee_live_disabled &&
-    (activeChannelStakedLevel >= CHANNEL_STAKED_LEVEL_LIVESTREAM || user.odysee_live_enabled);
+
+  const enableLivestream = ENABLE_NO_SOURCE_CLAIMS && user && !user.odysee_live_disabled;
+
   // $FlowFixMe
   const AVAILABLE_MODES = Object.values(PUBLISH_MODES).filter((mode) => {
     // $FlowFixMe

@@ -18,6 +18,7 @@ import React from 'react';
 import Yrbl from 'component/yrbl';
 import { getTipValues } from 'util/livestream';
 import Slide from '@mui/material/Slide';
+import useGetUserMemberships from 'effects/use-get-user-memberships';
 
 export const VIEW_MODES = {
   CHAT: 'chat',
@@ -39,9 +40,19 @@ type Props = {
   pinnedComments: Array<Comment>,
   superChats: Array<Comment>,
   theme: string,
-  doCommentList: (uri: string, parentId: string, page: number, pageSize: number) => void,
+  doCommentList: (
+    uri: string,
+    parentId: ?string,
+    page: number,
+    pageSize: number,
+    sortBy: ?number,
+    isLivestream: boolean
+  ) => void,
   doResolveUris: (uris: Array<string>, cache: boolean) => void,
   doSuperChatList: (uri: string) => void,
+  claimsByUri: { [string]: any },
+  doFetchUserMemberships: (claimIdCsv: string) => void,
+  setLayountRendered: (boolean) => void,
 };
 
 export default function LivestreamChatLayout(props: Props) {
@@ -61,6 +72,9 @@ export default function LivestreamChatLayout(props: Props) {
     doCommentList,
     doResolveUris,
     doSuperChatList,
+    doFetchUserMemberships,
+    claimsByUri,
+    setLayountRendered,
   } = props;
 
   const isMobile = useIsMobile() && !isPopoutWindow;
@@ -88,6 +102,22 @@ export default function LivestreamChatLayout(props: Props) {
   if (superChatsByChronologicalOrder.length > 0) {
     superChatsByChronologicalOrder.sort((a, b) => b.timestamp - a.timestamp);
   }
+
+  // get commenter claim ids for checking premium status
+  const commenterClaimIds = commentsByChronologicalOrder.map((comment) => {
+    return comment.channel_id;
+  });
+
+  // update premium status
+  const shouldFetchUserMemberships = true;
+  useGetUserMemberships(
+    shouldFetchUserMemberships,
+    commenterClaimIds,
+    claimsByUri,
+    doFetchUserMemberships,
+    [commentsByChronologicalOrder],
+    true
+  );
 
   const commentsToDisplay =
     viewMode === VIEW_MODES.CHAT ? commentsByChronologicalOrder : superChatsByChronologicalOrder;
@@ -140,6 +170,10 @@ export default function LivestreamChatLayout(props: Props) {
   }
 
   React.useEffect(() => {
+    if (setLayountRendered) setLayountRendered(true);
+  }, [setLayountRendered]);
+
+  React.useEffect(() => {
     if (customViewMode && customViewMode !== viewMode) {
       setViewMode(customViewMode);
     }
@@ -147,7 +181,7 @@ export default function LivestreamChatLayout(props: Props) {
 
   React.useEffect(() => {
     if (claimId) {
-      doCommentList(uri, '', 1, 75);
+      doCommentList(uri, undefined, 1, 75, undefined, true);
       doSuperChatList(uri);
     }
   }, [claimId, uri, doCommentList, doSuperChatList]);

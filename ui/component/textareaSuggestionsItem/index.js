@@ -1,5 +1,5 @@
 import { connect } from 'react-redux';
-import { selectClaimForUri } from 'redux/selectors/claims';
+import { selectClaimForUri, selectOdyseeMembershipForUri } from 'redux/selectors/claims';
 import TextareaSuggestionsItem from './view';
 import { formatLbryChannelName } from 'util/url';
 import { getClaimTitle } from 'util/claim';
@@ -11,7 +11,8 @@ const select = (state, props) => {
 
   return {
     claimLabel: claim && formatLbryChannelName(claim.canonical_url),
-    claimTitle: claim && getClaimTitle(claim.canonical_url),
+    claimTitle: claim && getClaimTitle(claim),
+    odyseeMembershipByUri: selectOdyseeMembershipForUri(state, uri),
   };
 };
 

@@ -1,6 +1,11 @@
 import { connect } from 'react-redux';
-import { selectTitleForUri, selectClaimIsNsfwForUri, makeSelectClaimWasPurchased } from 'redux/selectors/claims';
-import { makeSelectFileInfoForUri, makeSelectStreamingUrlForUri } from 'redux/selectors/file_info';
+import {
+  selectClaimForUri,
+  selectTitleForUri,
+  makeSelectClaimWasPurchased,
+  selectGeoRestrictionForUri,
+} from 'redux/selectors/claims';
+import { makeSelectStreamingUrlForUri } from 'redux/selectors/file_info';
 import {
   makeSelectNextUrlForCollectionAndUrl,
   makeSelectPreviousUrlForCollectionAndUrl,
@@ -14,26 +19,33 @@ import {
 } from 'redux/selectors/content';
 import { selectClientSetting } from 'redux/selectors/settings';
 import { selectCostInfoForUri } from 'lbryinc';
-import { doPlayUri, doSetPlayingUri } from 'redux/actions/content';
+import { doUriInitiatePlay, doSetPlayingUri } from 'redux/actions/content';
 import { doFetchRecommendedContent } from 'redux/actions/search';
-import { doAnaltyicsPurchaseEvent } from 'redux/actions/app';
 import { withRouter } from 'react-router';
+import { selectAppDrawerOpen } from 'redux/selectors/app';
+import { selectIsActiveLivestreamForUri, selectCommentSocketConnected } from 'redux/selectors/livestream';
+import { doCommentSocketConnect, doCommentSocketDisconnect } from 'redux/actions/websocket';
+import { isStreamPlaceholderClaim, getVideoClaimAspectRatio } from 'util/claim';
 import FileRenderFloating from './view';
 
 const select = (state, props) => {
+  const { location } = props;
+
   const playingUri = selectPlayingUri(state);
-  const primaryUri = selectPrimaryUri(state);
-  const uri = playingUri && playingUri.uri;
-  const collectionId = playingUri && playingUri.collectionId;
+  const { uri, collectionId } = playingUri || {};
+
+  const claim = uri && selectClaimForUri(state, uri);
+  const { claim_id: claimId, signing_channel: channelClaim } = claim || {};
+  const { canonical_url: channelUrl } = channelClaim || {};
 
   return {
+    claimId,
+    channelUrl,
     uri,
-    primaryUri,
     playingUri,
+    primaryUri: selectPrimaryUri(state),
     title: selectTitleForUri(state, uri),
-    fileInfo: makeSelectFileInfoForUri(uri)(state),
-    mature: selectClaimIsNsfwForUri(state, uri),
-    isFloating: makeSelectIsPlayerFloating(props.location)(state),
+    isFloating: makeSelectIsPlayerFloating(location)(state),
     streamingUrl: makeSelectStreamingUrlForUri(uri)(state),
     floatingPlayerEnabled: selectClientSetting(state, SETTINGS.FLOATING_PLAYER),
     renderMode: makeSelectFileRenderModeForUri(uri)(state),
@@ -43,26 +55,21 @@ const select = (state, props) => {
     nextListUri: collectionId && makeSelectNextUrlForCollectionAndUrl(collectionId, uri)(state),
     previousListUri: collectionId && makeSelectPreviousUrlForCollectionAndUrl(collectionId, uri)(state),
     collectionId,
+    isCurrentClaimLive: selectIsActiveLivestreamForUri(state, uri),
+    videoAspectRatio: getVideoClaimAspectRatio(claim),
+    socketConnected: selectCommentSocketConnected(state),
+    isLivestreamClaim: isStreamPlaceholderClaim(claim),
+    geoRestriction: selectGeoRestrictionForUri(state, uri),
+    appDrawerOpen: selectAppDrawerOpen(state),
   };
 };
 
-const perform = (dispatch) => ({
-  closeFloatingPlayer: () => dispatch(doSetPlayingUri({ uri: null })),
-  doFetchRecommendedContent: (uri, mature) => dispatch(doFetchRecommendedContent(uri, mature)),
-  doPlayUri: (uri, collectionId, hideFailModal) =>
-    dispatch(
-      doPlayUri(
-        uri,
-        false,
-        false,
-        (fileInfo) => {
-          dispatch(doAnaltyicsPurchaseEvent(fileInfo));
-        },
-        hideFailModal
-      ),
-      dispatch(doSetPlayingUri({ uri, collectionId }))
-    ),
-  clearSecondarySource: (uri) => dispatch(doSetPlayingUri({ uri })),
-});
+const perform = {
+  doFetchRecommendedContent,
+  doUriInitiatePlay,
+  doSetPlayingUri,
+  doCommentSocketConnect,
+  doCommentSocketDisconnect,
+};
 
 export default withRouter(connect(select, perform)(FileRenderFloating));

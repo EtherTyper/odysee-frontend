@@ -3,8 +3,10 @@ import type { Node } from 'react';
 import * as PAGES from 'constants/pages';
 import * as ICONS from 'constants/icons';
 import * as KEYCODES from 'constants/keycodes';
-import React, { useEffect } from 'react';
+import { SIDEBAR_SUBS_DISPLAYED } from 'constants/subscriptions';
+import React from 'react';
 import Button from 'component/button';
+import ClaimPreviewTitle from 'component/claimPreviewTitle';
 import classnames from 'classnames';
 import Icon from 'component/common/icon';
 import NotificationBubble from 'component/notificationBubble';
@@ -13,22 +15,23 @@ import I18nMessage from 'component/i18nMessage';
 import ChannelThumbnail from 'component/channelThumbnail';
 import { useIsMobile, useIsLargeScreen, isTouch } from 'effects/use-screensize';
 import { GetLinksData } from 'util/buildHomepage';
-import { DOMAIN, ENABLE_UI_NOTIFICATIONS, ENABLE_NO_SOURCE_CLAIMS, CHANNEL_STAKED_LEVEL_LIVESTREAM } from 'config';
+import { DOMAIN, ENABLE_UI_NOTIFICATIONS, ENABLE_NO_SOURCE_CLAIMS } from 'config';
+import PremiumBadge from 'component/common/premium-badge';
 
-const FOLLOWED_ITEM_INITIAL_LIMIT = 10;
 const touch = isTouch();
 
 type SideNavLink = {
   title: string,
+  icon: string,
   link?: string,
   route?: string,
   onClick?: () => any,
-  icon: string,
   extra?: Node,
   hideForUnauth?: boolean,
+  noI18n?: boolean,
 };
 
-const GO_LIVE = {
+const GO_LIVE: SideNavLink = {
   title: 'Go Live',
   link: `/$/${PAGES.LIVESTREAM}`,
   icon: ICONS.VIDEO,
@@ -54,7 +57,7 @@ const RECENT_FROM_FOLLOWING = {
   icon: ICONS.SUBSCRIBE,
 };
 
-const NOTIFICATIONS = {
+const NOTIFICATIONS: SideNavLink = {
   title: 'Notifications',
   link: `/$/${PAGES.NOTIFICATIONS}`,
   icon: ICONS.NOTIFICATION,
@@ -62,11 +65,33 @@ const NOTIFICATIONS = {
   hideForUnauth: true,
 };
 
-const PLAYLISTS = {
+const WATCH_LATER: SideNavLink = {
+  title: 'Watch Later',
+  link: `/$/${PAGES.LIST}/watchlater`,
+  icon: ICONS.TIME,
+  hideForUnauth: true,
+};
+
+const FAVORITES: SideNavLink = {
+  title: 'Favorites',
+  link: `/$/${PAGES.LIST}/favorites`,
+  icon: ICONS.STAR,
+  hideForUnauth: true,
+};
+
+const PLAYLISTS: SideNavLink = {
   title: 'Lists',
   link: `/$/${PAGES.LISTS}`,
   icon: ICONS.STACK,
   hideForUnauth: true,
+};
+
+const PREMIUM: SideNavLink = {
+  title: 'Premium',
+  link: `/$/${PAGES.ODYSEE_MEMBERSHIP}`,
+  icon: ICONS.UPGRADE,
+  hideForUnauth: true,
+  noI18n: true,
 };
 
 const UNAUTH_LINKS: Array<SideNavLink> = [
@@ -92,7 +117,7 @@ const UNAUTH_LINKS: Array<SideNavLink> = [
   },
 ];
 
-const WILD_WEST = {
+const WILD_WEST: SideNavLink = {
   title: 'Wild West',
   link: `/$/${PAGES.WILD_WEST}`,
   icon: ICONS.WILD_WEST,
@@ -103,6 +128,7 @@ const WILD_WEST = {
 
 type Props = {
   subscriptions: Array<Subscription>,
+  lastActiveSubs: ?Array<Subscription>,
   followedTags: Array<Tag>,
   email: ?string,
   uploadCount: number,
@@ -116,14 +142,17 @@ type Props = {
   doClearPurchasedUriSuccess: () => void,
   user: ?User,
   homepageData: any,
-  activeChannelStakedLevel: number,
   wildWestDisabled: boolean,
   doClearClaimSearch: () => void,
+  odyseeMembership: string,
+  odyseeMembershipByUri: (uri: string) => string,
+  doFetchLastActiveSubs: (force?: boolean, count?: number) => void,
 };
 
 function SideNavigation(props: Props) {
   const {
     subscriptions,
+    lastActiveSubs,
     doSignOut,
     email,
     purchaseSuccess,
@@ -136,14 +165,18 @@ function SideNavigation(props: Props) {
     homepageData,
     user,
     followedTags,
-    activeChannelStakedLevel,
     wildWestDisabled,
     doClearClaimSearch,
+    odyseeMembership,
+    odyseeMembershipByUri,
+    doFetchLastActiveSubs,
   } = props;
 
   const isLargeScreen = useIsLargeScreen();
 
-  const EXTRA_SIDEBAR_LINKS = GetLinksData(homepageData, isLargeScreen).map(({ pinnedUrls, ...theRest }) => theRest);
+  const EXTRA_SIDEBAR_LINKS = GetLinksData(homepageData, isLargeScreen).map(
+    ({ pinnedUrls, pinnedClaimIds, ...theRest }) => theRest
+  );
 
   const MOBILE_LINKS: Array<SideNavLink> = [
     {
@@ -155,6 +188,12 @@ function SideNavigation(props: Props) {
       title: 'New Channel',
       link: `/$/${PAGES.CHANNEL_NEW}`,
       icon: ICONS.CHANNEL,
+      hideForUnauth: true,
+    },
+    {
+      title: 'Sync YouTube Channel',
+      link: `/$/${PAGES.YOUTUBE_SYNC}`,
+      icon: ICONS.YOUTUBE,
       hideForUnauth: true,
     },
     {
@@ -217,15 +256,9 @@ function SideNavigation(props: Props) {
   const notificationsEnabled = ENABLE_UI_NOTIFICATIONS || (user && user.experimental_ui);
   const isAuthenticated = Boolean(email);
 
-  const livestreamEnabled = Boolean(
-    ENABLE_NO_SOURCE_CLAIMS &&
-      user &&
-      !user.odysee_live_disabled &&
-      (activeChannelStakedLevel >= CHANNEL_STAKED_LEVEL_LIVESTREAM || user.odysee_live_enabled)
-  );
+  const livestreamEnabled = Boolean(ENABLE_NO_SOURCE_CLAIMS && user && !user.odysee_live_disabled);
 
   const [pulseLibrary, setPulseLibrary] = React.useState(false);
-  const [expandSubscriptions, setExpandSubscriptions] = React.useState(false);
   const [expandTags, setExpandTags] = React.useState(false);
 
   const isPersonalized = !IS_WEB || isAuthenticated;
@@ -253,38 +286,23 @@ function SideNavigation(props: Props) {
     }
   }, [hideMenuFromView, menuInitialized]);
 
-  const shouldRenderLargeMenu = menuCanCloseCompletely || sidebarOpen;
+  const shouldRenderLargeMenu = (menuCanCloseCompletely && !isAbsolute) || sidebarOpen;
 
   const showMicroMenu = !sidebarOpen && !menuCanCloseCompletely;
   const showPushMenu = sidebarOpen && !menuCanCloseCompletely;
   const showOverlay = isAbsolute && sidebarOpen;
 
-  const showSubscriptionSection = shouldRenderLargeMenu && isPersonalized && subscriptions && subscriptions.length > 0;
   const showTagSection = sidebarOpen && isPersonalized && followedTags && followedTags.length;
 
   const [subscriptionFilter, setSubscriptionFilter] = React.useState('');
 
-  const filteredSubscriptions = subscriptions.filter(
-    (sub) => !subscriptionFilter || sub.channelName.toLowerCase().includes(subscriptionFilter.toLowerCase())
-  );
-
-  let displayedSubscriptions = filteredSubscriptions;
-  if (
-    showSubscriptionSection &&
-    !subscriptionFilter &&
-    subscriptions.length > FOLLOWED_ITEM_INITIAL_LIMIT &&
-    !expandSubscriptions
-  ) {
-    displayedSubscriptions = subscriptions.slice(0, FOLLOWED_ITEM_INITIAL_LIMIT);
-  }
-
   let displayedFollowedTags = followedTags;
-  if (showTagSection && followedTags.length > FOLLOWED_ITEM_INITIAL_LIMIT && !expandTags) {
-    displayedFollowedTags = followedTags.slice(0, FOLLOWED_ITEM_INITIAL_LIMIT);
+  if (showTagSection && followedTags.length > SIDEBAR_SUBS_DISPLAYED && !expandTags) {
+    displayedFollowedTags = followedTags.slice(0, SIDEBAR_SUBS_DISPLAYED);
   }
 
   function getLink(props: SideNavLink) {
-    const { hideForUnauth, route, link, ...passedProps } = props;
+    const { hideForUnauth, route, link, noI18n, ...passedProps } = props;
     const { title, icon, extra } = passedProps;
 
     if (hideForUnauth && !email) {
@@ -297,8 +315,8 @@ function SideNavigation(props: Props) {
           {...passedProps}
           icon={icon}
           navigate={route || link}
-          label={__(title)}
-          title={__(title)}
+          label={noI18n ? title : __(title)}
+          title={noI18n ? title : __(title)}
           className={classnames('navigation-link', {
             'navigation-link--pulse': icon === ICONS.LIBRARY && pulseLibrary,
             'navigation-link--highlighted': icon === ICONS.NOTIFICATION && unseenCount > 0,
@@ -311,35 +329,51 @@ function SideNavigation(props: Props) {
   }
 
   function getSubscriptionSection() {
-    if (showSubscriptionSection) {
+    const showSubsSection = shouldRenderLargeMenu && isPersonalized && subscriptions && subscriptions.length > 0;
+    if (showSubsSection) {
+      let displayedSubscriptions;
+      if (subscriptionFilter) {
+        const filter = subscriptionFilter.toLowerCase();
+        displayedSubscriptions = subscriptions.filter((sub) => sub.channelName.toLowerCase().includes(filter));
+      } else {
+        displayedSubscriptions =
+          lastActiveSubs && lastActiveSubs.length > 0 ? lastActiveSubs : subscriptions.slice(0, SIDEBAR_SUBS_DISPLAYED);
+      }
+
+      if (lastActiveSubs === undefined) {
+        return null; // Don't show yet, just wait to save some renders
+      }
+
       return (
-        <>
-          <ul className="navigation__secondary navigation-links">
-            {subscriptions.length > FOLLOWED_ITEM_INITIAL_LIMIT && (
-              <li className="navigation-item">
-                <DebouncedInput icon={ICONS.SEARCH} placeholder={__('Filter')} onChange={setSubscriptionFilter} />
-              </li>
-            )}
-            {displayedSubscriptions.map((subscription) => (
-              <SubscriptionListItem key={subscription.uri} subscription={subscription} />
-            ))}
-            {!!subscriptionFilter && !displayedSubscriptions.length && (
-              <li>
-                <div className="navigation-item">
-                  <div className="empty empty--centered">{__('No results')}</div>
-                </div>
-              </li>
-            )}
-            {!subscriptionFilter && subscriptions.length > FOLLOWED_ITEM_INITIAL_LIMIT && (
-              <Button
-                key="showMore"
-                label={expandSubscriptions ? __('Show less') : __('Show more')}
-                className="navigation-link"
-                onClick={() => setExpandSubscriptions(!expandSubscriptions)}
-              />
-            )}
-          </ul>
-        </>
+        <ul className="navigation__secondary navigation-links">
+          {subscriptions.length > SIDEBAR_SUBS_DISPLAYED && (
+            <li className="navigation-item">
+              <DebouncedInput icon={ICONS.SEARCH} placeholder={__('Filter')} onChange={setSubscriptionFilter} />
+            </li>
+          )}
+          {displayedSubscriptions.map((subscription) => (
+            <SubscriptionListItem
+              key={subscription.uri}
+              subscription={subscription}
+              odyseeMembershipByUri={odyseeMembershipByUri}
+            />
+          ))}
+          {!!subscriptionFilter && !displayedSubscriptions.length && (
+            <li>
+              <div className="navigation-item">
+                <div className="empty empty--centered">{__('No results')}</div>
+              </div>
+            </li>
+          )}
+          {!subscriptionFilter && (
+            <Button
+              key="showMore"
+              label={__('Manage')}
+              className="navigation-link"
+              navigate={`/$/${PAGES.CHANNELS_FOLLOWING_MANAGE}`}
+            />
+          )}
+        </ul>
       );
     }
     return null;
@@ -355,7 +389,7 @@ function SideNavigation(props: Props) {
                 <Button navigate={`/$/discover?t=${name}`} label={`#${name}`} className="navigation-link" />
               </li>
             ))}
-            {followedTags.length > FOLLOWED_ITEM_INITIAL_LIMIT && (
+            {followedTags.length > SIDEBAR_SUBS_DISPLAYED && (
               <Button
                 key="showMore"
                 label={expandTags ? __('Show less') : __('Show more')}
@@ -373,6 +407,10 @@ function SideNavigation(props: Props) {
   React.useEffect(() => {
     // $FlowFixMe
     document.body.style.overflowY = showOverlay ? 'hidden' : '';
+    return () => {
+      // $FlowFixMe
+      document.body.style.overflowY = '';
+    };
   }, [showOverlay]);
 
   React.useEffect(() => {
@@ -405,7 +443,7 @@ function SideNavigation(props: Props) {
     return () => window.removeEventListener('keydown', handleKeydown);
   }, [sidebarOpen, setSidebarOpen, isAbsolute]);
 
-  useEffect(() => {
+  React.useEffect(() => {
     if (!window.Optanon) {
       const gdprDiv = document.getElementById('gdprSidebarLink');
       if (gdprDiv) {
@@ -413,6 +451,10 @@ function SideNavigation(props: Props) {
       }
     }
   }, [sidebarOpen]);
+
+  React.useEffect(() => {
+    doFetchLastActiveSubs();
+  }, []);
 
   const unAuthNudge =
     DOMAIN === 'lbry.tv' ? null : (
@@ -482,6 +524,17 @@ function SideNavigation(props: Props) {
             >
               {getLink(getHomeButton(doClearClaimSearch))}
               {getLink(RECENT_FROM_FOLLOWING)}
+              {!odyseeMembership && getLink(PREMIUM)}
+            </ul>
+
+            <ul
+              className={classnames('navigation-links', {
+                'navigation-links--micro': showMicroMenu,
+                'navigation-links--absolute': shouldRenderLargeMenu,
+              })}
+            >
+              {!showMicroMenu && getLink(WATCH_LATER)}
+              {!showMicroMenu && getLink(FAVORITES)}
               {getLink(PLAYLISTS)}
             </ul>
 
@@ -493,7 +546,7 @@ function SideNavigation(props: Props) {
             >
               {EXTRA_SIDEBAR_LINKS && (
                 <>
-                  {/* $FlowFixMe -- GetLinksData should fix it's data type */}
+                  {/* $FlowFixMe: GetLinksData type needs an update */}
                   {EXTRA_SIDEBAR_LINKS.map((linkProps) => getLink(linkProps))}
                   {!wildWestDisabled && getLink(WILD_WEST)}
                 </>
@@ -522,19 +575,32 @@ function SideNavigation(props: Props) {
   );
 }
 
-function SubscriptionListItem({ subscription }: { subscription: Subscription }) {
+type SubItemProps = {
+  subscription: Subscription,
+  odyseeMembershipByUri: (uri: string) => string,
+};
+
+function SubscriptionListItem(props: SubItemProps) {
+  const { subscription, odyseeMembershipByUri } = props;
   const { uri, channelName } = subscription;
+
+  const membership = odyseeMembershipByUri(uri);
+
   return (
-    <li className="navigation-link__wrapper">
+    <li className="navigation-link__wrapper navigation__subscription">
       <Button
         navigate={uri}
         className="navigation-link navigation-link--with-thumbnail"
         activeClass="navigation-link--active"
       >
         <ChannelThumbnail xsmall uri={uri} hideStakedIndicator />
-        <span dir="auto" className="button__label">
-          {channelName}
-        </span>
+        <div className="navigation__subscription-title">
+          <ClaimPreviewTitle uri={uri} />
+          <span dir="auto" className="channel-name">
+            {channelName}
+            <PremiumBadge membership={membership} />
+          </span>
+        </div>
       </Button>
     </li>
   );

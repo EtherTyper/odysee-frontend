@@ -3,6 +3,7 @@ import { selectHasChannels, selectFetchingMyChannels } from 'redux/selectors/cla
 import { doClearPublish } from 'redux/actions/publish';
 import { selectActiveChannelClaim } from 'redux/selectors/app';
 import { doFetchNoSourceClaims } from 'redux/actions/livestream';
+import { selectUser } from 'redux/selectors/user';
 import {
   makeSelectPendingLivestreamsForChannelId,
   makeSelectLivestreamsForChannelId,
@@ -23,6 +24,7 @@ const select = (state) => {
     myLivestreamClaims: makeSelectLivestreamsForChannelId(channelId)(state),
     pendingClaims: makeSelectPendingLivestreamsForChannelId(channelId)(state),
     fetchingLivestreams: makeSelectIsFetchingLivestreams(channelId)(state),
+    user: selectUser(state),
   };
 };
 const perform = (dispatch) => ({

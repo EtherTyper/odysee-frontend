@@ -1,28 +1,35 @@
 // @flow
+import { v4 as Uuidv4 } from 'uuid';
 import { SHOW_ADS, AD_KEYWORD_BLOCKLIST, AD_KEYWORD_BLOCKLIST_CHECK_DESCRIPTION } from 'config';
 import React from 'react';
 import ClaimList from 'component/claimList';
 import ClaimListDiscover from 'component/claimListDiscover';
+import Spinner from 'component/spinner';
 import Ads from 'web/component/ads';
 import Card from 'component/common/card';
 import { useIsMobile, useIsMediumScreen } from 'effects/use-screensize';
 import Button from 'component/button';
+import { FYP_ID } from 'constants/urlParams';
 import classnames from 'classnames';
 import RecSys from 'recsys';
+import { getClaimMetadata } from 'util/claim';
 
 const VIEW_ALL_RELATED = 'view_all_related';
 const VIEW_MORE_FROM = 'view_more_from';
+const BLOCKED_WORDS: ?Array<string> = AD_KEYWORD_BLOCKLIST && AD_KEYWORD_BLOCKLIST.toLowerCase().split(',');
+const CHECK_DESCRIPTION: boolean = AD_KEYWORD_BLOCKLIST_CHECK_DESCRIPTION === 'true';
 
 type Props = {
   uri: string,
   recommendedContentUris: Array<string>,
   nextRecommendedUri: string,
   isSearching: boolean,
-  doFetchRecommendedContent: (string) => void,
-  isAuthenticated: boolean,
+  doFetchRecommendedContent: (string, ?FypParam) => void,
   claim: ?StreamClaim,
   claimId: string,
   metadata: any,
+  location: UrlLocation,
+  userHasPremiumPlus: boolean,
 };
 
 export default React.memo<Props>(function RecommendedContent(props: Props) {
@@ -32,48 +39,35 @@ export default React.memo<Props>(function RecommendedContent(props: Props) {
     recommendedContentUris,
     nextRecommendedUri,
     isSearching,
-    isAuthenticated,
     claim,
-    claimId,
-    metadata,
+    location,
+    userHasPremiumPlus,
   } = props;
 
-  let { description, title } = metadata;
+  const claimId: ?string = claim && claim.claim_id;
+  const injectAds = SHOW_ADS && IS_WEB && !userHasPremiumPlus;
 
-  if (description) {
-    description = description.toLowerCase();
-  }
+  function claimContainsBlockedWords(claim: ?StreamClaim) {
+    if (BLOCKED_WORDS) {
+      const hasBlockedWords = (str) => BLOCKED_WORDS.some((bw) => str.includes(bw));
+      const metadata = getClaimMetadata(claim);
+      // $FlowFixMe - flow does not support chaining yet, but we know for sure these fields are '?string'.
+      const title = metadata?.title?.toLowerCase();
+      // $FlowFixMe
+      const description = metadata?.description?.toLowerCase();
+      // $FlowFixMe
+      const name = claim?.name?.toLowerCase();
 
-  if (title) {
-    title = title.toLowerCase();
-  }
-
-  let claimNameToCheckAgainst;
-  if (claim) {
-    claimNameToCheckAgainst = claim.name && claim.name.toLowerCase();
-  }
-
-  const checkDescriptionForBlacklistWords = AD_KEYWORD_BLOCKLIST_CHECK_DESCRIPTION === 'true';
-
-  let triggerBlacklist = false;
-  if (AD_KEYWORD_BLOCKLIST) {
-    const termsToCheck = AD_KEYWORD_BLOCKLIST.toLowerCase().split(',');
-    // eslint-disable-next-line no-unused-vars
-
-    if (title) {
-      for (const term of termsToCheck) {
-        if (claimNameToCheckAgainst && claimNameToCheckAgainst.includes(term)) {
-          triggerBlacklist = true;
-        }
-        if (title.includes(term)) {
-          triggerBlacklist = true;
-        }
-        if (description && checkDescriptionForBlacklistWords && description.includes(term)) {
-          triggerBlacklist = true;
-        }
-      }
+      return Boolean(
+        (title && hasBlockedWords(title)) ||
+          (name && hasBlockedWords(name)) ||
+          (CHECK_DESCRIPTION && description && hasBlockedWords(description))
+      );
     }
+    return false;
   }
+
+  const blacklistTriggered = React.useMemo(() => injectAds && claimContainsBlockedWords(claim), [injectAds, claim]);
 
   const [viewMode, setViewMode] = React.useState(VIEW_ALL_RELATED);
   const signingChannel = claim && claim.signing_channel;
@@ -82,21 +76,40 @@ export default React.memo<Props>(function RecommendedContent(props: Props) {
   const isMedium = useIsMediumScreen();
   const { onRecsLoaded: onRecommendationsLoaded, onClickedRecommended: onRecommendationClicked } = RecSys;
 
+  const InjectedAd =
+    injectAds && !blacklistTriggered
+      ? {
+          node: <Ads small type="video" className="ads__claim-item--recommended" />,
+          index: isMobile ? 0 : 3,
+        }
+      : null;
+
+  // Assume this component always resides in a page where the `uri` matches
+  // e.g. never in a floating popup. With that, we can grab the FYP ID from
+  // the search param directly. Otherwise, the parent component would need to
+  // pass it.
+  const { search } = location;
+  const urlParams = new URLSearchParams(search);
+  const fypId = urlParams.get(FYP_ID);
+  const [uuid] = React.useState(fypId ? Uuidv4() : '');
+
   React.useEffect(() => {
-    doFetchRecommendedContent(uri);
-  }, [uri, doFetchRecommendedContent]);
+    const fypParam = fypId && uuid ? { gid: fypId, uuid } : null;
+    doFetchRecommendedContent(uri, fypParam);
+  }, [uri, doFetchRecommendedContent, fypId, uuid]);
 
   React.useEffect(() => {
     // Right now we only want to record the recs if they actually saw them.
     if (
+      claimId &&
       recommendedContentUris &&
       recommendedContentUris.length &&
       nextRecommendedUri &&
       viewMode === VIEW_ALL_RELATED
     ) {
-      onRecommendationsLoaded(claimId, recommendedContentUris);
+      onRecommendationsLoaded(claimId, recommendedContentUris, uuid);
     }
-  }, [recommendedContentUris, onRecommendationsLoaded, claimId, nextRecommendedUri, viewMode]);
+  }, [recommendedContentUris, onRecommendationsLoaded, claimId, nextRecommendedUri, viewMode, uuid]);
 
   function handleRecommendationClicked(e, clickedClaim) {
     if (claim) {
@@ -133,17 +146,18 @@ export default React.memo<Props>(function RecommendedContent(props: Props) {
       }
       body={
         <div>
+          {isSearching && (
+            <div className="empty empty--centered-tight">
+              <Spinner type="small" />
+            </div>
+          )}
           {viewMode === VIEW_ALL_RELATED && (
             <ClaimList
               type="small"
               loading={isSearching}
               uris={recommendedContentUris}
               hideMenu={isMobile}
-              injectedItem={
-                SHOW_ADS &&
-                IS_WEB &&
-                !isAuthenticated && <Ads small type={'video'} triggerBlacklist={triggerBlacklist} />
-              }
+              injectedItem={InjectedAd}
               empty={__('No related content found')}
               onClick={handleRecommendationClicked}
             />
@@ -162,7 +176,7 @@ export default React.memo<Props>(function RecommendedContent(props: Props) {
               channelIds={[signingChannel.claim_id]}
               loading={isSearching}
               hideMenu={isMobile}
-              injectedItem={SHOW_ADS && IS_WEB && !isAuthenticated && <Ads small type={'video'} />}
+              injectedItem={InjectedAd}
               empty={__('No related content found')}
             />
           )}
@@ -179,7 +193,6 @@ function areEqual(prevProps: Props, nextProps: Props) {
   if (
     a.uri !== b.uri ||
     a.nextRecommendedUri !== b.nextRecommendedUri ||
-    a.isAuthenticated !== b.isAuthenticated ||
     a.isSearching !== b.isSearching ||
     (a.recommendedContentUris && !b.recommendedContentUris) ||
     (!a.recommendedContentUris && b.recommendedContentUris) ||

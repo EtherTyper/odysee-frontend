@@ -11,6 +11,7 @@ import { isChannelClaim } from 'util/claim';
 import { formatLbryUrlForWeb } from 'util/url';
 import { formatClaimPreviewTitle } from 'util/formatAriaLabel';
 import { toCompactNotation } from 'util/string';
+import ClaimPreviewProgress from 'component/claimPreviewProgress';
 import Tooltip from 'component/common/tooltip';
 import FileThumbnail from 'component/fileThumbnail';
 import UriIndicator from 'component/uriIndicator';
@@ -56,6 +57,7 @@ type Props = {
   nsfw: boolean,
   placeholder: string,
   type: string,
+  nonClickable?: boolean,
   banState: { blacklisted?: boolean, filtered?: boolean, muted?: boolean, blocked?: boolean },
   hasVisitedUri: boolean,
   blockedUris: Array<string>,
@@ -80,7 +82,7 @@ type Props = {
   isLivestreamActive: boolean,
   collectionId?: string,
   isCollectionMine: boolean,
-  disableNavigation?: boolean,
+  disableNavigation?: boolean, // DEPRECATED - use 'nonClickable'. Remove this when channel-finder is consolidated (#810)
   mediaDuration?: string,
   date?: any,
   indexInContainer?: number, // The index order of this component within 'containerId'.
@@ -90,6 +92,7 @@ type Props = {
   showEdit?: boolean,
   dragHandleProps?: any,
   unavailableUris?: Array<string>,
+  showMemberBadge?: boolean,
 };
 
 const ClaimPreview = forwardRef<any, {}>((props: Props, ref: any) => {
@@ -115,6 +118,7 @@ const ClaimPreview = forwardRef<any, {}>((props: Props, ref: any) => {
     history,
     wrapperElement,
     type,
+    nonClickable,
     placeholder,
     // pending
     reflectingProgress,
@@ -152,6 +156,7 @@ const ClaimPreview = forwardRef<any, {}>((props: Props, ref: any) => {
     showEdit,
     dragHandleProps,
     unavailableUris,
+    showMemberBadge,
   } = props;
 
   const isMobile = useIsMobile();
@@ -342,6 +347,7 @@ const ClaimPreview = forwardRef<any, {}>((props: Props, ref: any) => {
         'claim-preview__wrapper--small': type === 'small',
         'claim-preview__live': isLivestreamActive,
         'claim-preview__active': active,
+        'non-clickable': nonClickable,
       })}
     >
       <>
@@ -366,7 +372,12 @@ const ClaimPreview = forwardRef<any, {}>((props: Props, ref: any) => {
 
           {isChannelUri && claim ? (
             <UriIndicator focusable={false} uri={uri} link>
-              <ChannelThumbnail uri={uri} small={type === 'inline'} />
+              <ChannelThumbnail
+                uri={uri}
+                small={type === 'inline'}
+                showMemberBadge={showMemberBadge}
+                checkMembership={false}
+              />
             </UriIndicator>
           ) : (
             <>
@@ -388,6 +399,7 @@ const ClaimPreview = forwardRef<any, {}>((props: Props, ref: any) => {
                         <PreviewOverlayProperties uri={uri} small={type === 'small'} properties={liveProperty} />
                       </div>
                     )}
+                    <ClaimPreviewProgress uri={uri} />
                   </FileThumbnail>
                 </NavLink>
               ) : (
@@ -411,11 +423,21 @@ const ClaimPreview = forwardRef<any, {}>((props: Props, ref: any) => {
                 {!isChannelUri && signingChannel && (
                   <div className="claim-preview__channel-staked">
                     <UriIndicator focusable={false} uri={uri} link hideAnonymous>
-                      <ChannelThumbnail uri={signingChannel.permanent_url} xsmall />
+                      <ChannelThumbnail
+                        uri={signingChannel.permanent_url}
+                        xsmall
+                        showMemberBadge={showMemberBadge}
+                        checkMembership={false}
+                      />
                     </UriIndicator>
                   </div>
                 )}
-                <ClaimPreviewSubtitle uri={uri} type={type} />
+                <ClaimPreviewSubtitle
+                  uri={uri}
+                  type={type}
+                  showAtSign={isChannelUri}
+                  showMemberBadge={!showMemberBadge}
+                />
                 {(pending || !!reflectingProgress) && <PublishPending uri={uri} />}
                 {channelSubscribers}
               </div>

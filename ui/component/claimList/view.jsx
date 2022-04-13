@@ -7,6 +7,7 @@ import ClaimPreview from 'component/claimPreview';
 import Spinner from 'component/spinner';
 import { FormField } from 'component/common/form';
 import usePersistedState from 'effects/use-persisted-state';
+import useLastVisibleItem from 'effects/use-last-visible-item';
 import debounce from 'util/debounce';
 import ClaimPreviewTile from 'component/claimPreviewTile';
 
@@ -25,6 +26,7 @@ type Props = {
   header: Node | boolean,
   headerAltControls: Node,
   loading: boolean,
+  useLoadingSpinner?: boolean, // use built-in spinner when 'loading' is true. Else, roll your own at client-side.
   type: string,
   activeUri?: string,
   empty?: string,
@@ -39,7 +41,7 @@ type Props = {
   renderActions?: (Claim) => ?Node,
   renderProperties?: (Claim) => ?Node,
   includeSupportAction?: boolean,
-  injectedItem: ?Node,
+  injectedItem?: { node: Node, index?: number, replace?: boolean },
   timedOutMessage?: Node,
   tileLayout?: boolean,
   searchInLanguage: boolean,
@@ -47,15 +49,17 @@ type Props = {
   claimSearchByQuery: { [string]: Array<string> },
   claimsByUri: { [string]: any },
   collectionId?: string,
+  fypId?: string,
   showNoSourceClaims?: boolean,
   onClick?: (e: any, claim?: ?Claim, index?: number) => void,
+  noEmpty?: boolean,
   maxClaimRender?: number,
-  excludeUris?: Array<string>,
   loadedCallback?: (number) => void,
   swipeLayout: boolean,
   showEdit?: boolean,
   droppableProvided?: any,
   unavailableUris?: Array<string>,
+  showMemberBadge?: boolean,
 };
 
 export default function ClaimList(props: Props) {
@@ -65,6 +69,7 @@ export default function ClaimList(props: Props) {
     prefixUris,
     headerAltControls,
     loading,
+    useLoadingSpinner,
     persistedStorageKey,
     empty,
     defaultSort,
@@ -84,18 +89,24 @@ export default function ClaimList(props: Props) {
     searchInLanguage,
     hideMenu,
     collectionId,
+    fypId,
     showNoSourceClaims,
     onClick,
+    noEmpty,
     maxClaimRender,
-    excludeUris = [],
     loadedCallback,
     swipeLayout = false,
     showEdit,
     droppableProvided,
     unavailableUris,
+    showMemberBadge,
   } = props;
 
   const [currentSort, setCurrentSort] = usePersistedState(persistedStorageKey, SORT_NEW);
+
+  // Resolve the index for injectedItem, if provided; else injectedIndex will be 'undefined'.
+  const listRef = React.useRef();
+  const injectedIndex = useLastVisibleItem(injectedItem, listRef);
 
   // Exclude prefix uris in these results variables. We don't want to show
   // anything if the search failed or timed out.
@@ -103,14 +114,14 @@ export default function ClaimList(props: Props) {
   const urisLength = (uris && uris.length) || 0;
 
   let tileUris = (prefixUris || []).concat(uris || []);
-  tileUris = tileUris.filter((uri) => !excludeUris.includes(uri));
+
   if (prefixUris && prefixUris.length) tileUris.splice(prefixUris.length * -1, prefixUris.length);
 
   const totalLength = tileUris.length;
 
   if (maxClaimRender) tileUris = tileUris.slice(0, maxClaimRender);
 
-  let sortedUris = (urisLength > 0 && (currentSort === SORT_NEW ? tileUris : tileUris.slice().reverse())) || [];
+  const sortedUris = (urisLength > 0 && (currentSort === SORT_NEW ? tileUris : tileUris.slice().reverse())) || [];
 
   React.useEffect(() => {
     if (typeof loadedCallback === 'function') loadedCallback(totalLength);
@@ -139,6 +150,12 @@ export default function ClaimList(props: Props) {
     // https://github.com/lbryio/lbry-redux/blob/master/src/redux/actions/publish.js#L74-L79
     return claim.name.length === 24 && !claim.name.includes(' ') && claim.value.author === 'Spee.ch';
   }, []);
+
+  // @if process.env.NODE_ENV!='production'
+  if (injectedItem && injectedItem.replace) {
+    throw new Error('claimList: "injectedItem.replace" is not implemented yet');
+  }
+  // @endif
 
   useEffect(() => {
     const handleScroll = debounce((e) => {
@@ -183,26 +200,46 @@ export default function ClaimList(props: Props) {
       showEdit={showEdit}
       dragHandleProps={draggableProvided && draggableProvided.dragHandleProps}
       unavailableUris={unavailableUris}
+      showMemberBadge={showMemberBadge}
     />
   );
 
+  const getInjectedItem = (index) => {
+    if (injectedItem && injectedItem.node && injectedIndex === index) {
+      return injectedItem.node;
+    }
+    return null;
+  };
+
   return tileLayout && !header ? (
-    <section className={classnames('claim-grid', { 'swipe-list': swipeLayout })}>
-      {urisLength > 0 &&
-        tileUris.map((uri) => (
-          <ClaimPreviewTile
-            key={uri}
-            uri={uri}
-            showHiddenByUser={showHiddenByUser}
-            properties={renderProperties}
-            collectionId={collectionId}
-            showNoSourceClaims={showNoSourceClaims}
-            swipeLayout={swipeLayout}
-          />
-        ))}
-      {!timedOut && urisLength === 0 && !loading && <div className="empty main--empty">{empty || noResultMsg}</div>}
-      {timedOut && timedOutMessage && <div className="empty main--empty">{timedOutMessage}</div>}
-    </section>
+    <>
+      <section ref={listRef} className={classnames('claim-grid', { 'swipe-list': swipeLayout })}>
+        {urisLength > 0 &&
+          tileUris.map((uri, index) => (
+            <React.Fragment key={uri}>
+              {getInjectedItem(index)}
+              <ClaimPreviewTile
+                uri={uri}
+                showHiddenByUser={showHiddenByUser}
+                properties={renderProperties}
+                collectionId={collectionId}
+                fypId={fypId}
+                showNoSourceClaims={showNoSourceClaims}
+                swipeLayout={swipeLayout}
+              />
+            </React.Fragment>
+          ))}
+        {!timedOut && urisLength === 0 && !loading && !noEmpty && (
+          <div className="empty main--empty">{empty || noResultMsg}</div>
+        )}
+        {timedOut && timedOutMessage && <div className="empty main--empty">{timedOutMessage}</div>}
+      </section>
+      {loading && useLoadingSpinner && (
+        <div className="spinnerArea--centered">
+          <Spinner type="small" />
+        </div>
+      )}
+    </>
   ) : (
     <section
       className={classnames('claim-list', {
@@ -245,50 +282,59 @@ export default function ClaimList(props: Props) {
             'swipe-list': swipeLayout,
           })}
           {...(droppableProvided && droppableProvided.droppableProps)}
-          ref={droppableProvided && droppableProvided.innerRef}
+          ref={droppableProvided ? droppableProvided.innerRef : listRef}
         >
-          {injectedItem && sortedUris.some((uri, index) => index === 4) && <li>{injectedItem}</li>}
+          {droppableProvided ? (
+            <>
+              {sortedUris.map((uri, index) => (
+                <React.Suspense fallback={null} key={uri}>
+                  <Draggable draggableId={uri} index={index}>
+                    {(draggableProvided, draggableSnapshot) => {
+                      // Restrict dragging to vertical axis
+                      // https://github.com/atlassian/react-beautiful-dnd/issues/958#issuecomment-980548919
+                      let transform = draggableProvided.draggableProps.style.transform;
+                      if (draggableSnapshot.isDragging && transform) {
+                        transform = transform.replace(/\(.+,/, '(0,');
+                      }
 
-          {sortedUris.map((uri, index) =>
-            droppableProvided ? (
-              <React.Suspense fallback={null} key={uri}>
-                <Draggable draggableId={uri} index={index}>
-                  {(draggableProvided, draggableSnapshot) => {
-                    // Restrict dragging to vertical axis
-                    // https://github.com/atlassian/react-beautiful-dnd/issues/958#issuecomment-980548919
-                    let transform = draggableProvided.draggableProps.style.transform;
+                      const style = {
+                        ...draggableProvided.draggableProps.style,
+                        transform,
+                      };
 
-                    if (draggableSnapshot.isDragging && transform) {
-                      transform = transform.replace(/\(.+,/, '(0,');
-                    }
-
-                    const style = {
-                      ...draggableProvided.draggableProps.style,
-                      transform,
-                    };
-
-                    return (
-                      <li ref={draggableProvided.innerRef} {...draggableProvided.draggableProps} style={style}>
-                        {/* https://github.com/atlassian/react-beautiful-dnd/issues/1756 */}
-                        <div style={{ display: 'none' }} {...draggableProvided.dragHandleProps} />
-
-                        {getClaimPreview(uri, index, draggableProvided)}
-                      </li>
-                    );
-                  }}
-                </Draggable>
-              </React.Suspense>
-            ) : (
-              getClaimPreview(uri, index)
-            )
+                      return (
+                        <li ref={draggableProvided.innerRef} {...draggableProvided.draggableProps} style={style}>
+                          {/* https://github.com/atlassian/react-beautiful-dnd/issues/1756 */}
+                          <div style={{ display: 'none' }} {...draggableProvided.dragHandleProps} />
+                          {getClaimPreview(uri, index, draggableProvided)}
+                        </li>
+                      );
+                    }}
+                  </Draggable>
+                </React.Suspense>
+              ))}
+              {droppableProvided.placeholder}
+            </>
+          ) : (
+            sortedUris.map((uri, index) => (
+              <React.Fragment key={uri}>
+                {getInjectedItem(index)}
+                {getClaimPreview(uri, index)}
+              </React.Fragment>
+            ))
           )}
-
-          {droppableProvided && droppableProvided.placeholder}
         </ul>
       )}
 
-      {!timedOut && urisLength === 0 && !loading && <div className="empty empty--centered">{empty || noResultMsg}</div>}
+      {!timedOut && urisLength === 0 && !loading && !noEmpty && (
+        <div className="empty empty--centered">{empty || noResultMsg}</div>
+      )}
       {!loading && timedOut && timedOutMessage && <div className="empty empty--centered">{timedOutMessage}</div>}
+      {loading && useLoadingSpinner && (
+        <div className="spinnerArea--centered">
+          <Spinner type="small" />
+        </div>
+      )}
     </section>
   );
 }

@@ -3,7 +3,9 @@ import { selectUser } from 'redux/selectors/user';
 import { makeSelectRecommendedRecsysIdForClaimId } from 'redux/selectors/search';
 import { v4 as Uuidv4 } from 'uuid';
 import { parseURI } from 'util/lbryURI';
+import { getAuthToken } from 'util/saved-passwords';
 import * as SETTINGS from 'constants/settings';
+import { X_LBRY_AUTH_TOKEN } from 'constants/token';
 import { makeSelectClaimForUri } from 'redux/selectors/claims';
 import { selectPlayingUri, selectPrimaryUri } from 'redux/selectors/content';
 import { selectClientSetting, selectDaemonSettings } from 'redux/selectors/settings';
@@ -74,11 +76,11 @@ const recsys = {
    * Page was loaded. Get or Create entry and populate it with default data, plus recommended content, recsysId, etc.
    * Called from recommendedContent component
    */
-  onRecsLoaded: function (claimId, uris) {
+  onRecsLoaded: function (claimId, uris, uuid = '') {
     if (window && window.store) {
       const state = window.store.getState();
       if (!recsys.entries[claimId]) {
-        recsys.createRecsysEntry(claimId);
+        recsys.createRecsysEntry(claimId, null, uuid);
       }
       const claimIds = getClaimIdsFromUris(uris);
       recsys.entries[claimId]['recsysId'] = makeSelectRecommendedRecsysIdForClaimId(claimId)(state) || recsysId;
@@ -92,8 +94,9 @@ const recsys = {
    * Creates an Entry with optional parentUuid
    * @param: claimId: string
    * @param: parentUuid: string (optional)
+   * @param: uuid: string Specific uuid to use.
    */
-  createRecsysEntry: function (claimId, parentUuid) {
+  createRecsysEntry: function (claimId, parentUuid, uuid = '') {
     if (window && window.store && claimId) {
       const state = window.store.getState();
       const user = selectUser(state);
@@ -101,7 +104,7 @@ const recsys = {
       if (parentUuid) {
         // Make a stub entry that will be filled out on page load
         recsys.entries[claimId] = {
-          uuid: Uuidv4(),
+          uuid: uuid || Uuidv4(),
           parentUuid: parentUuid,
           uid: userId || null, // selectUser
           claimId: claimId,
@@ -111,7 +114,7 @@ const recsys = {
         };
       } else {
         recsys.entries[claimId] = {
-          uuid: Uuidv4(),
+          uuid: uuid || Uuidv4(),
           uid: userId, // selectUser
           claimId: claimId,
           pageLoadedAt: Date.now(),
@@ -136,14 +139,21 @@ const recsys = {
 
     if (recsys.entries[claimId] && shareTelemetry) {
       const data = JSON.stringify(recsys.entries[claimId]);
-      try {
-        navigator.sendBeacon(recsysEndpoint, data);
-        if (!isTentative) {
-          delete recsys.entries[claimId];
-        }
-      } catch (error) {
-        console.log('no beacon for you', error);
+
+      if (!isTentative) {
+        delete recsys.entries[claimId];
       }
+
+      return fetch(recsysEndpoint, {
+        method: 'POST',
+        headers: {
+          [X_LBRY_AUTH_TOKEN]: getAuthToken(),
+          'Content-Type': 'application/json',
+        },
+        body: data,
+      }).catch((err) => {
+        console.log('RECSYS: failed to send entry', err);
+      });
     }
     recsys.log('sendRecsysEntry', claimId);
   },

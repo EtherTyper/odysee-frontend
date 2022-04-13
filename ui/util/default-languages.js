@@ -1,4 +1,3 @@
-import homepages from 'homepages';
 import SUPPORTED_BROWSER_LANGUAGES from 'constants/supported_browser_languages';
 const DEFAULT_LANG = 'en';
 
@@ -24,6 +23,7 @@ export const getDefaultLanguage = () => {
 // If homepages has a key "zh-Hant" return that, otherwise return "zh", otherwise "en"
 export const getDefaultHomepageKey = () => {
   const language = getDefaultLanguage();
+  const homepages = window.homepages || {};
   return (homepages[language] && language) || (homepages[language.slice(0, 2)] && language.slice(0, 2)) || DEFAULT_LANG;
 };
 
@@ -41,4 +41,27 @@ export function sortLanguageMap(languages) {
     if (lhs > rhs) return 1;
     return 0;
   });
+}
+
+/**
+ * Resolves the language parameter for a claim_search based on various settings.
+ *
+ * @param langSetting The user's language setting.
+ * @param searchInSelectedLangOnly Return results in the given language only.
+ * @param langParam Language override for specific use-cases, typically from urlParam.
+ * @returns {string|null} Comma-separated string of language codes, or null.
+ */
+export function resolveLangForClaimSearch(langSetting, searchInSelectedLangOnly, langParam = null) {
+  // TODO: expand ternary for easier maintenance.
+  return searchInSelectedLangOnly
+    ? langParam === null
+      ? langSetting.concat(langSetting === 'en' ? ',none' : '')
+      : langParam === 'any'
+      ? null
+      : langParam.concat(langParam === 'en' ? ',none' : '')
+    : langParam === null
+    ? null
+    : langParam === 'any'
+    ? null
+    : langParam.concat(langParam === 'en' ? ',none' : '');
 }
