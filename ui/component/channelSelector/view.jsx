@@ -17,13 +17,121 @@ type Props = {
   onChannelSelect: (url: string) => void,
   hideAnon?: boolean,
   activeChannelClaim: ?ChannelClaim,
-  doSetActiveChannel: (string) => void,
+  doSetActiveChannel: (claimId: ?string, override?: boolean) => void,
   incognito: boolean,
   doSetIncognito: (boolean) => void,
   claimsByUri: { [string]: any },
   doFetchUserMemberships: (claimIdCsv: string) => void,
   odyseeMembershipByUri: (uri: string) => string,
+  storeSelection?: boolean,
+  doSetDefaultChannel: (claimId: string) => void,
+  isHeaderMenu?: boolean,
+  autoSet?: boolean,
+  channelToSet?: string,
 };
+
+export default function ChannelSelector(props: Props) {
+  const {
+    channels,
+    activeChannelClaim,
+    doSetActiveChannel,
+    incognito,
+    doSetIncognito,
+    odyseeMembershipByUri,
+    claimsByUri,
+    doFetchUserMemberships,
+    storeSelection,
+    doSetDefaultChannel,
+    isHeaderMenu,
+    autoSet,
+    channelToSet,
+  } = props;
+
+  const hideAnon = Boolean(props.hideAnon || storeSelection);
+
+  const {
+    push,
+    location: { pathname },
+  } = useHistory();
+
+  const activeChannelUrl = activeChannelClaim && activeChannelClaim.permanent_url;
+
+  function handleChannelSelect(channelClaim) {
+    doSetIncognito(false);
+    doSetActiveChannel(channelClaim.claim_id);
+
+    if (storeSelection) {
+      doSetDefaultChannel(channelClaim.claim_id);
+    }
+  }
+
+  React.useEffect(() => {
+    if (!autoSet) return;
+
+    if (channelToSet) {
+      doSetActiveChannel(channelToSet);
+      doSetIncognito(false);
+    } else if (!channelToSet) {
+      doSetIncognito(true);
+    }
+
+    // on mount, if we get to autoSet a channel, set it.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  return (
+    <div className="channel__selector">
+      <Menu>
+        {isHeaderMenu ? (
+          <MenuButton className="menu__link">
+            <ChannelThumbnail uri={activeChannelUrl} hideStakedIndicator xxsmall noLazyLoad />
+            {__('Change Default Channel')}
+            <Icon icon={ICONS.DOWN} />
+          </MenuButton>
+        ) : (
+          <MenuButton>
+            {(incognito && !hideAnon) || !activeChannelUrl ? (
+              <IncognitoSelector isSelected />
+            ) : (
+              <ChannelListItem
+                odyseeMembershipByUri={odyseeMembershipByUri}
+                uri={activeChannelUrl}
+                isSelected
+                claimsByUri={claimsByUri}
+                doFetchUserMemberships={doFetchUserMemberships}
+              />
+            )}
+          </MenuButton>
+        )}
+
+        <MenuList className="menu__list channel__list">
+          {channels &&
+            channels.map((channel) => (
+              <MenuItem key={channel.permanent_url} onSelect={() => handleChannelSelect(channel)}>
+                <ChannelListItem
+                  odyseeMembershipByUri={odyseeMembershipByUri}
+                  uri={channel.permanent_url}
+                  claimsByUri={claimsByUri}
+                  doFetchUserMemberships={doFetchUserMemberships}
+                />
+              </MenuItem>
+            ))}
+          {!hideAnon && (
+            <MenuItem onSelect={() => doSetIncognito(true)}>
+              <IncognitoSelector />
+            </MenuItem>
+          )}
+          <MenuItem onSelect={() => push(`/$/${PAGES.CHANNEL_NEW}?redirect=${pathname}`)}>
+            <div className="channel__list-item">
+              <Icon sectionIcon icon={ICONS.CHANNEL} />
+              <h2 className="channel__list-text">{__('Create a new channel')}</h2>
+            </div>
+          </MenuItem>
+        </MenuList>
+      </Menu>
+    </div>
+  );
+}
 
 type ListItemProps = {
   uri: string,
@@ -64,76 +172,3 @@ function IncognitoSelector(props: IncognitoSelectorProps) {
     </div>
   );
 }
-
-function ChannelSelector(props: Props) {
-  const {
-    channels,
-    activeChannelClaim,
-    doSetActiveChannel,
-    hideAnon = false,
-    incognito,
-    doSetIncognito,
-    odyseeMembershipByUri,
-    claimsByUri,
-    doFetchUserMemberships,
-  } = props;
-
-  const {
-    push,
-    location: { pathname },
-  } = useHistory();
-
-  const activeChannelUrl = activeChannelClaim && activeChannelClaim.permanent_url;
-
-  function handleChannelSelect(channelClaim) {
-    doSetIncognito(false);
-    doSetActiveChannel(channelClaim.claim_id);
-  }
-
-  return (
-    <div className="channel__selector">
-      <Menu>
-        <MenuButton>
-          {(incognito && !hideAnon) || !activeChannelUrl ? (
-            <IncognitoSelector isSelected />
-          ) : (
-            <ChannelListItem
-              odyseeMembershipByUri={odyseeMembershipByUri}
-              uri={activeChannelUrl}
-              isSelected
-              claimsByUri={claimsByUri}
-              doFetchUserMemberships={doFetchUserMemberships}
-            />
-          )}
-        </MenuButton>
-
-        <MenuList className="menu__list channel__list">
-          {channels &&
-            channels.map((channel) => (
-              <MenuItem key={channel.permanent_url} onSelect={() => handleChannelSelect(channel)}>
-                <ChannelListItem
-                  odyseeMembershipByUri={odyseeMembershipByUri}
-                  uri={channel.permanent_url}
-                  claimsByUri={claimsByUri}
-                  doFetchUserMemberships={doFetchUserMemberships}
-                />
-              </MenuItem>
-            ))}
-          {!hideAnon && (
-            <MenuItem onSelect={() => doSetIncognito(true)}>
-              <IncognitoSelector />
-            </MenuItem>
-          )}
-          <MenuItem onSelect={() => push(`/$/${PAGES.CHANNEL_NEW}?redirect=${pathname}`)}>
-            <div className="channel__list-item">
-              <Icon sectionIcon icon={ICONS.CHANNEL} />
-              <h2 className="channel__list-text">{__('Create a new channel')}</h2>
-            </div>
-          </MenuItem>
-        </MenuList>
-      </Menu>
-    </div>
-  );
-}
-
-export default ChannelSelector;

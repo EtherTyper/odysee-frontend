@@ -4,11 +4,13 @@ import {
   selectIsUriResolving,
   selectTitleForUri,
   selectDateForUri,
+  selectGeoRestrictionForUri,
+  selectClaimIsMine,
 } from 'redux/selectors/claims';
 import { doFileGet } from 'redux/actions/file';
 import { doResolveUri } from 'redux/actions/claims';
 import { selectViewCountForUri, selectBanStateForUri } from 'lbryinc';
-import { selectIsActiveLivestreamForUri } from 'redux/selectors/livestream';
+import { selectIsActiveLivestreamForUri, selectViewersForId } from 'redux/selectors/livestream';
 import { selectShowMatureContent } from 'redux/selectors/settings';
 import { isClaimNsfw, isStreamPlaceholderClaim, getThumbnailFromClaim } from 'util/claim';
 import ClaimPreviewTile from './view';
@@ -25,13 +27,16 @@ const select = (state, props) => {
     mediaDuration,
     date: props.uri && selectDateForUri(state, props.uri),
     isResolvingUri: props.uri && selectIsUriResolving(state, props.uri),
+    claimIsMine: props.uri && selectClaimIsMine(state, claim),
     thumbnail: getThumbnailFromClaim(claim),
     title: props.uri && selectTitleForUri(state, props.uri),
     banState: selectBanStateForUri(state, props.uri),
+    geoRestriction: selectGeoRestrictionForUri(state, props.uri),
     showMature: selectShowMatureContent(state),
     isMature: claim ? isClaimNsfw(claim) : false,
     isLivestream,
     isLivestreamActive: isLivestream && selectIsActiveLivestreamForUri(state, props.uri),
+    livestreamViewerCount: isLivestream && claim ? selectViewersForId(state, claim.claim_id) : undefined,
     viewCount: selectViewCountForUri(state, props.uri),
   };
 };

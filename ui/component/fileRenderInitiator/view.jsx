@@ -71,6 +71,7 @@ export default function FileRenderInitiator(props: Props) {
     doFetchChannelLiveStatus,
   } = props;
 
+  const theaterMode = renderMode === 'video' || renderMode === 'audio' ? videoTheaterMode : false;
   const { livestreamPage, layountRendered } = React.useContext(LivestreamContext) || {};
 
   const isMobile = useIsMobile();
@@ -104,7 +105,8 @@ export default function FileRenderInitiator(props: Props) {
     history.push(`/$/${PAGES.AUTH}?redirect=${encodeURIComponent(pathname)}`);
   }
 
-  useFetchLiveStatus(livestreamPage ? undefined : channelClaimId, doFetchChannelLiveStatus);
+  // in case of a livestream outside of the livestream page component, like embed
+  useFetchLiveStatus(isLivestreamClaim && !livestreamPage ? channelClaimId : undefined, doFetchChannelLiveStatus);
 
   const thumbnail = useThumbnail(claimThumbnail, containerRef);
 
@@ -163,7 +165,7 @@ export default function FileRenderInitiator(props: Props) {
           ? 'embed__inline-button'
           : classnames('content__cover', {
               'content__cover--disabled': disabled,
-              'content__cover--theater-mode': videoTheaterMode && !isMobile,
+              'content__cover--theater-mode': theaterMode && !isMobile,
               'content__cover--text': isText,
               'card__media--nsfw': obscurePreview,
             })

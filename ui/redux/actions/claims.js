@@ -13,6 +13,7 @@ import {
   selectClaimIsMine,
   selectIsMyChannelCountOverLimit,
   selectById,
+  selectMyChannelClaimIds,
 } from 'redux/selectors/claims';
 
 import { doFetchTxoPage } from 'redux/actions/wallet';
@@ -1001,25 +1002,34 @@ export function doCollectionPublishUpdate(
 }
 
 export function doCheckPublishNameAvailability(name: string) {
-  return (dispatch: Dispatch) => {
+  return (dispatch: Dispatch, getState: GetState) => {
     dispatch({
       type: ACTIONS.CHECK_PUBLISH_NAME_STARTED,
     });
 
-    return Lbry.claim_list({ name: name }).then((result) => {
+    const state = getState();
+    const myChannelClaimIds = selectMyChannelClaimIds(state);
+
+    return dispatch(
+      doClaimSearch(
+        {
+          name,
+          channel_ids: myChannelClaimIds,
+          page: 1,
+          page_size: 50,
+          no_totals: true,
+          include_is_my_output: true,
+        },
+        {
+          useAutoPagination: true,
+        }
+      )
+    ).then((result) => {
       dispatch({
         type: ACTIONS.CHECK_PUBLISH_NAME_COMPLETED,
       });
-      if (result.items.length) {
-        dispatch({
-          type: ACTIONS.FETCH_CLAIM_LIST_MINE_COMPLETED,
-          data: {
-            result,
-            resolve: false,
-          },
-        });
-      }
-      return !(result && result.items && result.items.length);
+
+      return Object.keys(result).length === 0;
     });
   };
 }
@@ -1123,4 +1133,28 @@ export const doCheckPendingClaims = (onChannelConfirmed: Function) => (dispatch:
   checkPendingInterval = setInterval(() => {
     checkTxoList();
   }, 30000);
+};
+
+export const doFetchLatestClaimForChannel = (uri: string, isEmbed?: boolean) => (
+  dispatch: Dispatch,
+  getState: GetState
+) => {
+  const searchOptions = {
+    limit_claims_per_channel: 1,
+    channel: uri,
+    no_totals: true,
+    order_by: ['release_time'],
+    page: 1,
+    has_source: true,
+    stream_types: isEmbed ? ['audio', 'video'] : undefined,
+  };
+
+  return dispatch(doClaimSearch(searchOptions))
+    .then((results) =>
+      dispatch({
+        type: ACTIONS.FETCH_LATEST_FOR_CHANNEL_DONE,
+        data: { uri, results },
+      })
+    )
+    .catch(() => dispatch({ type: ACTIONS.FETCH_LATEST_FOR_CHANNEL_FAIL }));
 };

@@ -7,7 +7,7 @@ import ClaimPreview from 'component/claimPreview';
 import Spinner from 'component/spinner';
 import { FormField } from 'component/common/form';
 import usePersistedState from 'effects/use-persisted-state';
-import useLastVisibleItem from 'effects/use-last-visible-item';
+import useGetLastVisibleSlot from 'effects/use-get-last-visible-slot';
 import debounce from 'util/debounce';
 import ClaimPreviewTile from 'component/claimPreviewTile';
 
@@ -41,7 +41,7 @@ type Props = {
   renderActions?: (Claim) => ?Node,
   renderProperties?: (Claim) => ?Node,
   includeSupportAction?: boolean,
-  injectedItem?: { node: Node, index?: number, replace?: boolean },
+  injectedItem?: ListInjectedItem,
   timedOutMessage?: Node,
   tileLayout?: boolean,
   searchInLanguage: boolean,
@@ -60,6 +60,8 @@ type Props = {
   droppableProvided?: any,
   unavailableUris?: Array<string>,
   showMemberBadge?: boolean,
+  inWatchHistory?: boolean,
+  onHidden: (string) => void,
 };
 
 export default function ClaimList(props: Props) {
@@ -100,26 +102,32 @@ export default function ClaimList(props: Props) {
     droppableProvided,
     unavailableUris,
     showMemberBadge,
+    inWatchHistory,
+    onHidden,
   } = props;
 
   const [currentSort, setCurrentSort] = usePersistedState(persistedStorageKey, SORT_NEW);
+  const uriBuffer = React.useRef([]);
 
   // Resolve the index for injectedItem, if provided; else injectedIndex will be 'undefined'.
   const listRef = React.useRef();
-  const injectedIndex = useLastVisibleItem(injectedItem, listRef);
+  const findLastVisibleSlot = injectedItem && injectedItem.node && injectedItem.index === undefined;
+  const lastVisibleIndex = useGetLastVisibleSlot(listRef, !findLastVisibleSlot);
 
   // Exclude prefix uris in these results variables. We don't want to show
   // anything if the search failed or timed out.
   const timedOut = uris === null;
   const urisLength = (uris && uris.length) || 0;
 
-  let tileUris = (prefixUris || []).concat(uris || []);
-
-  if (prefixUris && prefixUris.length) tileUris.splice(prefixUris.length * -1, prefixUris.length);
+  const tileUris = React.useMemo(() => {
+    const x = (prefixUris || []).concat(uris || []);
+    if (prefixUris && prefixUris.length) {
+      x.splice(prefixUris.length * -1, prefixUris.length);
+    }
+    return maxClaimRender ? x.slice(0, maxClaimRender) : x;
+  }, [prefixUris, uris, maxClaimRender]);
 
   const totalLength = tileUris.length;
-
-  if (maxClaimRender) tileUris = tileUris.slice(0, maxClaimRender);
 
   const sortedUris = (urisLength > 0 && (currentSort === SORT_NEW ? tileUris : tileUris.slice().reverse())) || [];
 
@@ -150,12 +158,6 @@ export default function ClaimList(props: Props) {
     // https://github.com/lbryio/lbry-redux/blob/master/src/redux/actions/publish.js#L74-L79
     return claim.name.length === 24 && !claim.name.includes(' ') && claim.value.author === 'Spee.ch';
   }, []);
-
-  // @if process.env.NODE_ENV!='production'
-  if (injectedItem && injectedItem.replace) {
-    throw new Error('claimList: "injectedItem.replace" is not implemented yet');
-  }
-  // @endif
 
   useEffect(() => {
     const handleScroll = debounce((e) => {
@@ -201,13 +203,23 @@ export default function ClaimList(props: Props) {
       dragHandleProps={draggableProvided && draggableProvided.dragHandleProps}
       unavailableUris={unavailableUris}
       showMemberBadge={showMemberBadge}
+      inWatchHistory={inWatchHistory}
     />
   );
 
   const getInjectedItem = (index) => {
-    if (injectedItem && injectedItem.node && injectedIndex === index) {
-      return injectedItem.node;
+    if (injectedItem && injectedItem.node) {
+      if (typeof injectedItem.node === 'function') {
+        return injectedItem.node(index, lastVisibleIndex, pageSize);
+      } else {
+        if (injectedItem.index === undefined || injectedItem.index === null) {
+          return index === lastVisibleIndex ? injectedItem.node : null;
+        } else {
+          return index === injectedItem.index ? injectedItem.node : null;
+        }
+      }
     }
+
     return null;
   };
 
@@ -215,20 +227,35 @@ export default function ClaimList(props: Props) {
     <>
       <section ref={listRef} className={classnames('claim-grid', { 'swipe-list': swipeLayout })}>
         {urisLength > 0 &&
-          tileUris.map((uri, index) => (
-            <React.Fragment key={uri}>
-              {getInjectedItem(index)}
-              <ClaimPreviewTile
-                uri={uri}
-                showHiddenByUser={showHiddenByUser}
-                properties={renderProperties}
-                collectionId={collectionId}
-                fypId={fypId}
-                showNoSourceClaims={showNoSourceClaims}
-                swipeLayout={swipeLayout}
-              />
-            </React.Fragment>
-          ))}
+          tileUris.map((uri, index) => {
+            if (uri) {
+              const inj = getInjectedItem(index);
+              if (inj) {
+                if (!uriBuffer.current.includes(index)) {
+                  uriBuffer.current.push(index);
+                }
+              }
+              return (
+                <React.Fragment key={uri}>
+                  {inj && inj}
+                  {(index < tileUris.length - uriBuffer.current.length ||
+                    (pageSize && index < pageSize - uriBuffer.current.length)) && (
+                    <ClaimPreviewTile
+                      uri={uri}
+                      showHiddenByUser={showHiddenByUser}
+                      showUnresolvedClaims={showUnresolvedClaims}
+                      properties={renderProperties}
+                      collectionId={collectionId}
+                      fypId={fypId}
+                      showNoSourceClaims={showNoSourceClaims}
+                      swipeLayout={swipeLayout}
+                      onHidden={onHidden}
+                    />
+                  )}
+                </React.Fragment>
+              );
+            }
+          })}
         {!timedOut && urisLength === 0 && !loading && !noEmpty && (
           <div className="empty main--empty">{empty || noResultMsg}</div>
         )}
@@ -274,7 +301,8 @@ export default function ClaimList(props: Props) {
         </React.Fragment>
       )}
 
-      {urisLength > 0 && (
+      {/* the droppable element needs to be rendered even if empty otherwise logs error on console */}
+      {(urisLength > 0 || droppableProvided) && (
         <ul
           className={classnames('ul--no-style', {
             card: !(tileLayout || swipeLayout || type === 'small'),

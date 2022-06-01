@@ -4,6 +4,7 @@ import * as PAGES from 'constants/pages';
 import * as ICONS from 'constants/icons';
 import React, { useEffect, useState, useContext, useCallback } from 'react';
 import { stopContextMenu } from 'util/context-menu';
+import * as Chapters from './internal/chapters';
 import type { Player } from './internal/videojs';
 import VideoJs from './internal/videojs';
 import analytics from 'analytics';
@@ -14,8 +15,8 @@ import AutoplayCountdown from 'component/autoplayCountdown';
 import usePrevious from 'effects/use-previous';
 import FileViewerEmbeddedEnded from 'web/component/fileViewerEmbeddedEnded';
 import FileViewerEmbeddedTitle from 'component/fileViewerEmbeddedTitle';
-import { addTheaterModeButton } from './internal/theater-mode';
-import { addAutoplayNextButton } from './internal/autoplay-next';
+import useAutoplayNext from './internal/effects/use-autoplay-next';
+import useTheaterMode from './internal/effects/use-theater-mode';
 import { addPlayNextButton } from './internal/play-next';
 import { addPlayPreviousButton } from './internal/play-previous';
 import { useGetAds } from 'effects/use-get-ads';
@@ -27,6 +28,8 @@ import type { HomepageCat } from 'util/buildHomepage';
 import debounce from 'util/debounce';
 import { formatLbryUrlForWeb, generateListSearchUrlParams } from 'util/url';
 import useInterval from 'effects/use-interval';
+import { lastBandwidthSelector } from './internal/plugins/videojs-http-streaming--override/playlist-selectors';
+import RecSys from 'recsys';
 
 // const PLAY_TIMEOUT_ERROR = 'play_timeout_error';
 // const PLAY_TIMEOUT_LIMIT = 2000;
@@ -68,6 +71,10 @@ type Props = {
   claimRewards: () => void,
   isLivestreamClaim: boolean,
   activeLivestreamForChannel: any,
+  defaultQuality: ?string,
+  doToast: ({ message: string, linkText: string, linkTarget: string }) => void,
+  doSetContentHistoryItem: (uri: string) => void,
+  doClearContentHistoryUri: (uri: string) => void,
 };
 
 /*
@@ -112,13 +119,17 @@ function VideoViewer(props: Props) {
     isMarkdownOrComment,
     isLivestreamClaim,
     activeLivestreamForChannel,
+    defaultQuality,
+    doToast,
+    doSetContentHistoryItem,
   } = props;
 
   const permanentUrl = claim && claim.permanent_url;
   const adApprovedChannelIds = homepageData ? getAllIds(homepageData) : [];
   const claimId = claim && claim.claim_id;
   const channelClaimId = claim && claim.signing_channel && claim.signing_channel.claim_id;
-  const channelName = claim && claim.signing_channel && claim.signing_channel.name;
+  const channelTitle =
+    (claim && claim.signing_channel && claim.signing_channel.value && claim.signing_channel.value.title) || '';
   const isAudio = contentType.includes('audio');
   const forcePlayer = FORCE_CONTENT_TYPE_PLAYER.includes(contentType);
   const {
@@ -145,6 +156,15 @@ function VideoViewer(props: Props) {
   const isFirstRender = React.useRef(true);
   const playerRef = React.useRef(null);
 
+  const addAutoplayNextButton = useAutoplayNext(playerRef, autoplayNext);
+  const addTheaterModeButton = useTheaterMode(playerRef, videoTheaterMode);
+
+  React.useEffect(() => {
+    if (isPlaying) {
+      doSetContentHistoryItem(claim.permanent_url);
+    }
+  }, [isPlaying]);
+
   useEffect(() => {
     if (isFirstRender.current) {
       isFirstRender.current = false;
@@ -155,6 +175,7 @@ function VideoViewer(props: Props) {
 
   useInterval(
     () => {
+      RecSys.saveEntries();
       if (playerRef.current && isPlaying && !isLivestreamClaim) {
         handlePosition(playerRef.current);
       }
@@ -186,16 +207,6 @@ function VideoViewer(props: Props) {
     };
   }, [embedded, videoPlaybackRate]);
 
-  // TODO: analytics functionality
-  function doTrackingBuffered(e: Event, data: any) {
-    if (!isLivestreamClaim) {
-      fetch(source, { method: 'HEAD', cache: 'no-store' }).then((response) => {
-        data.playerPoweredBy = response.headers.get('x-powered-by');
-        doAnalyticsBuffer(uri, data);
-      });
-    }
-  }
-
   const doPlay = useCallback(
     (playUri) => {
       setDoNavigate(false);
@@ -219,7 +230,6 @@ function VideoViewer(props: Props) {
     if (playNextUrl) {
       if (permanentUrl !== nextRecommendedUri) {
         if (nextRecommendedUri) {
-          if (collectionId) clearPosition(permanentUrl);
           doPlay(nextRecommendedUri);
         }
       } else {
@@ -241,7 +251,6 @@ function VideoViewer(props: Props) {
     setEnded(false);
     setPlayNextUrl(true);
   }, [
-    clearPosition,
     collectionId,
     doNavigate,
     doPlay,
@@ -382,8 +391,14 @@ function VideoViewer(props: Props) {
     // re-factoring.
     player.on('loadedmetadata', () => restorePlaybackRate(player));
 
-    // used for tracking buffering for watchman
-    player.on('tracking:buffered', doTrackingBuffered);
+    // Override the "auto" algorithm to post-process the result
+    player.on('loadedmetadata', () => {
+      const vhs = player.tech(true).vhs;
+      if (vhs) {
+        // https://github.com/videojs/http-streaming/issues/749#issuecomment-606972884
+        vhs.selectPlaylist = lastBandwidthSelector;
+      }
+    });
 
     player.on('ended', () => setEnded(true));
     player.on('play', onPlay);
@@ -415,6 +430,8 @@ function VideoViewer(props: Props) {
     if (position && !isLivestreamClaim) {
       player.currentTime(position);
     }
+
+    Chapters.parseAndLoad(player, claim);
 
     playerRef.current = player;
   }, playerReadyDependencyList); // eslint-disable-line
@@ -477,27 +494,27 @@ function VideoViewer(props: Props) {
         startMuted={autoplayIfEmbedded}
         toggleVideoTheaterMode={toggleVideoTheaterMode}
         autoplay={!embedded || autoplayIfEmbedded}
-        autoplaySetting={localAutoplayNext}
         claimId={claimId}
         title={claim && ((claim.value && claim.value.title) || claim.name)}
-        channelName={channelName}
+        channelTitle={channelTitle}
         userId={userId}
         allowPreRoll={!authenticated} // TODO: pull this into ads functionality so it's self contained
         internalFeatureEnabled={internalFeature}
         shareTelemetry={shareTelemetry}
         replay={replay}
-        videoTheaterMode={videoTheaterMode}
         playNext={doPlayNext}
         playPrevious={doPlayPrevious}
         embedded={embedded}
         claimValues={claim.value}
         doAnalyticsView={doAnalyticsView}
+        doAnalyticsBuffer={doAnalyticsBuffer}
         claimRewards={claimRewards}
         uri={uri}
-        clearPosition={clearPosition}
         userClaimId={claim && claim.signing_channel && claim.signing_channel.claim_id}
         isLivestreamClaim={isLivestreamClaim}
         activeLivestreamForChannel={activeLivestreamForChannel}
+        defaultQuality={defaultQuality}
+        doToast={doToast}
       />
     </div>
   );

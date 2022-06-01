@@ -1,5 +1,6 @@
 // @flow
 import * as ACTIONS from 'constants/action_types';
+import { FETCH_ACTIVE_LIVESTREAMS_MIN_INTERVAL_MS } from 'constants/livestream';
 import { doClaimSearch } from 'redux/actions/claims';
 import {
   LiveStatus,
@@ -9,12 +10,8 @@ import {
   filterUpcomingLiveStreamClaims,
 } from 'util/livestream';
 import moment from 'moment';
-import { isLocalStorageAvailable } from 'util/storage';
+import { LocalStorage, LS } from 'util/storage';
 import { isEmpty } from 'util/object';
-
-const localStorageAvailable = isLocalStorageAvailable();
-
-const FETCH_ACTIVE_LIVESTREAMS_MIN_INTERVAL_MS = 5 * 60 * 1000;
 
 export const doFetchNoSourceClaims = (channelId: string) => async (dispatch: Dispatch, getState: GetState) => {
   dispatch({
@@ -119,20 +116,20 @@ const findActiveStreams = async (
 };
 
 export const doFetchChannelLiveStatus = (channelId: string) => async (dispatch: Dispatch) => {
-  const statusForId = `channel-live-status`;
-  const localStatus = localStorageAvailable && window.localStorage.getItem(statusForId);
+  const statusForId = LS.CHANNEL_LIVE_STATUS;
+  const localStatus = LocalStorage.getItem(statusForId);
 
   try {
     const { channelStatus, channelData } = await fetchLiveChannel(channelId);
     // store live state locally, and force 2 non-live statuses before returninig NOT LIVE. This allows for the stream to finish before disposing player.
     if (localStatus === LiveStatus.LIVE && channelStatus === LiveStatus.NOT_LIVE) {
-      localStorageAvailable && window.localStorage.removeItem(statusForId);
+      LocalStorage.removeItem(statusForId);
       return;
     }
 
     if (channelStatus === LiveStatus.NOT_LIVE && !localStatus) {
       dispatch({ type: ACTIONS.REMOVE_CHANNEL_FROM_ACTIVE_LIVESTREAMS, data: { channelId } });
-      localStorageAvailable && window.localStorage.removeItem(statusForId);
+      LocalStorage.removeItem(statusForId);
       return;
     }
 
@@ -149,10 +146,10 @@ export const doFetchChannelLiveStatus = (channelId: string) => async (dispatch: 
       dispatch({ type: ACTIONS.ADD_CHANNEL_TO_ACTIVE_LIVESTREAMS, data: { ...channelData } });
     }
 
-    localStorageAvailable && window.localStorage.setItem(statusForId, channelStatus);
+    LocalStorage.setItem(statusForId, channelStatus);
   } catch (err) {
     dispatch({ type: ACTIONS.REMOVE_CHANNEL_FROM_ACTIVE_LIVESTREAMS, data: { channelId } });
-    localStorageAvailable && window.localStorage.removeItem(statusForId);
+    LocalStorage.removeItem(statusForId);
   }
 };
 
@@ -168,10 +165,13 @@ export const doFetchActiveLivestreams = (
   const nextOptions = { order_by: orderBy, ...(lang ? { any_languages: lang } : {}) };
   const sameOptions = JSON.stringify(prevOptions) === JSON.stringify(nextOptions);
 
-  // already fetched livestreams within the interval, skip for now
   if (sameOptions && timeDelta < FETCH_ACTIVE_LIVESTREAMS_MIN_INTERVAL_MS) {
-    dispatch({ type: ACTIONS.FETCH_ACTIVE_LIVESTREAMS_SKIPPED });
-    return;
+    const failCount = state.livestream.activeLivestreamsLastFetchedFailCount;
+    if (failCount === 0 || failCount > 3) {
+      // Just fetched successfully, or failed 3 times. Skip for FETCH_ACTIVE_LIVESTREAMS_MIN_INTERVAL_MS.
+      dispatch({ type: ACTIONS.FETCH_ACTIVE_LIVESTREAMS_SKIPPED });
+      return;
+    }
   }
 
   // start fetching livestreams
@@ -207,6 +207,12 @@ export const doFetchActiveLivestreams = (
       },
     });
   } catch (err) {
-    dispatch({ type: ACTIONS.FETCH_ACTIVE_LIVESTREAMS_FAILED });
+    dispatch({
+      type: ACTIONS.FETCH_ACTIVE_LIVESTREAMS_FAILED,
+      data: {
+        activeLivestreamsLastFetchedDate: now,
+        activeLivestreamsLastFetchedOptions: nextOptions,
+      },
+    });
   }
 };

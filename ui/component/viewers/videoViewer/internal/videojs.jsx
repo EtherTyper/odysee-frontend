@@ -1,11 +1,13 @@
 // @flow
 import 'videojs-contrib-ads'; // must be loaded in this order
 import 'videojs-ima'; // loads directly after contrib-ads
+import 'videojs-vtt-thumbnails';
 import 'video.js/dist/alt/video-js-cdn.min.css';
 import './plugins/videojs-mobile-ui/plugin';
 import '@silvermine/videojs-chromecast/dist/silvermine-videojs-chromecast.css';
 import '@silvermine/videojs-airplay/dist/silvermine-videojs-airplay.css';
 import * as ICONS from 'constants/icons';
+import { VIDEO_PLAYBACK_RATES } from 'constants/player';
 import * as OVERLAY from './overlays';
 import Button from 'component/button';
 import classnames from 'classnames';
@@ -19,10 +21,13 @@ import Chromecast from './chromecast';
 import playerjs from 'player.js';
 import qualityLevels from 'videojs-contrib-quality-levels';
 import React, { useEffect, useRef, useState } from 'react';
+import i18n from './plugins/videojs-i18n/plugin';
 import recsys from './plugins/videojs-recsys/plugin';
 // import runAds from './ads';
 import videojs from 'video.js';
 import { useIsMobile } from 'effects/use-screensize';
+import { platform } from 'util/platform';
+import usePersistedState from 'effects/use-persisted-state';
 
 const canAutoplay = require('./plugins/canAutoplay');
 
@@ -30,10 +35,21 @@ require('@silvermine/videojs-chromecast')(videojs);
 require('@silvermine/videojs-airplay')(videojs);
 
 export type Player = {
+  // -- custom --
+  claimSrcOriginal: ?{ src: string, type: string },
+  claimSrcVhs: ?{ src: string, type: string },
+  isLivestream?: boolean,
+  // -- plugins ---
+  mobileUi: (any) => void,
+  chromecast: (any) => void,
+  overlay: (any) => void,
+  hlsQualitySelector: ?any,
+  i18n: (any) => void,
+  // -- base videojs --
   controlBar: { addChild: (string, any) => void },
   loadingSpinner: any,
   autoplay: (any) => boolean,
-  chromecast: (any) => void,
+  tech: (?boolean) => { vhs: ?any },
   currentTime: (?number) => number,
   dispose: () => void,
   duration: () => number,
@@ -42,15 +58,15 @@ export type Player = {
   exitFullscreen: () => boolean,
   getChild: (string) => any,
   isFullscreen: () => boolean,
-  mobileUi: (any) => void,
   muted: (?boolean) => boolean,
   on: (string, (any) => void) => void,
   one: (string, (any) => void) => void,
-  overlay: (any) => void,
   play: () => Promise<any>,
   playbackRate: (?number) => number,
   readyState: () => number,
   requestFullscreen: () => boolean,
+  src: ({ src: string, type: string }) => ?string,
+  currentSrc: () => string,
   userActive: (?boolean) => boolean,
   volume: (?number) => number,
 };
@@ -59,10 +75,9 @@ type Props = {
   adUrl: ?string,
   allowPreRoll: ?boolean,
   autoplay: boolean,
-  autoplaySetting: boolean,
   claimId: ?string,
   title: ?string,
-  channelName: ?string,
+  channelTitle: string,
   embedded: boolean,
   internalFeatureEnabled: ?boolean,
   isAudio: boolean,
@@ -73,44 +88,38 @@ type Props = {
   sourceType: string,
   startMuted: boolean,
   userId: ?number,
-  videoTheaterMode: boolean,
+  defaultQuality: ?string,
   onPlayerReady: (Player, any) => void,
   playNext: () => void,
   playPrevious: () => void,
   toggleVideoTheaterMode: () => void,
   claimRewards: () => void,
   doAnalyticsView: (string, number) => void,
+  doAnalyticsBuffer: (string, any) => void,
   uri: string,
   claimValues: any,
-  clearPosition: (string) => void,
   isLivestreamClaim: boolean,
   userClaimId: ?string,
   activeLivestreamForChannel: any,
+  doToast: ({ message: string, linkText: string, linkTarget: string }) => void,
 };
 
-const videoPlaybackRates = [0.25, 0.5, 0.75, 1, 1.1, 1.25, 1.5, 1.75, 2];
+const IS_IOS = platform.isIOS();
+const IS_MOBILE = platform.isMobile();
 
-const IS_IOS =
-  (/iPad|iPhone|iPod/.test(navigator.platform) ||
-    // for iOS 13+ , platform is MacIntel, so use this to test
-    (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)) &&
-  !window.MSStream;
+const PLUGIN_MAP = {
+  eventTracking: eventTracking,
+  hlsQualitySelector: hlsQualitySelector,
+  qualityLevels: qualityLevels,
+  recsys: recsys,
+  i18n: i18n,
+};
 
-if (!Object.keys(videojs.getPlugins()).includes('eventTracking')) {
-  videojs.registerPlugin('eventTracking', eventTracking);
-}
-
-if (!Object.keys(videojs.getPlugins()).includes('hlsQualitySelector')) {
-  videojs.registerPlugin('hlsQualitySelector', hlsQualitySelector);
-}
-
-if (!Object.keys(videojs.getPlugins()).includes('qualityLevels')) {
-  videojs.registerPlugin('qualityLevels', qualityLevels);
-}
-
-if (!Object.keys(videojs.getPlugins()).includes('recsys')) {
-  videojs.registerPlugin('recsys', recsys);
-}
+Object.entries(PLUGIN_MAP).forEach(([pluginName, plugin]) => {
+  if (!Object.keys(videojs.getPlugins()).includes(pluginName)) {
+    videojs.registerPlugin(pluginName, plugin);
+  }
+});
 
 // ****************************************************************************
 // VideoJs
@@ -124,10 +133,9 @@ export default React.memo<Props>(function VideoJs(props: Props) {
     // adUrl, // TODO: this ad functionality isn't used, can be pulled out
     // allowPreRoll,
     autoplay,
-    autoplaySetting,
     claimId,
     title,
-    channelName,
+    channelTitle,
     embedded,
     // internalFeatureEnabled, // for people on the team to test new features internally
     isAudio,
@@ -138,36 +146,40 @@ export default React.memo<Props>(function VideoJs(props: Props) {
     sourceType,
     startMuted,
     userId,
-    videoTheaterMode,
+    defaultQuality,
     onPlayerReady,
     playNext,
     playPrevious,
     toggleVideoTheaterMode,
     claimValues,
     doAnalyticsView,
+    doAnalyticsBuffer,
     claimRewards,
     uri,
-    clearPosition,
     userClaimId,
     isLivestreamClaim,
     activeLivestreamForChannel,
+    doToast,
   } = props;
+
+  // used to notify about default quality setting
+  // if already has a quality set, no need to notify
+  const [initialQualityChange, setInitialQualityChange] = usePersistedState(
+    'initial-quality-change',
+    Boolean(defaultQuality)
+  );
 
   const isMobile = useIsMobile();
 
-  // will later store the videojs player
   const playerRef = useRef();
   const containerRef = useRef();
-
   const tapToUnmuteRef = useRef();
   const tapToRetryRef = useRef();
-
   const playerServerRef = useRef();
 
   const { url: livestreamVideoUrl } = activeLivestreamForChannel || {};
-  const showQualitySelector =
-    !isLivestreamClaim ||
-    (livestreamVideoUrl && (livestreamVideoUrl.includes('/transcode/') || livestreamVideoUrl.includes('cloud.odysee')));
+  const overrideNativeVhs = !platform.isIPhone();
+  const showQualitySelector = (!isLivestreamClaim && overrideNativeVhs) || livestreamVideoUrl;
 
   // initiate keyboard shortcuts
   const { curried_function } = keyboardShorcuts({
@@ -186,34 +198,32 @@ export default React.memo<Props>(function VideoJs(props: Props) {
     tapToUnmuteRef,
     tapToRetryRef,
     setReload,
-    videoTheaterMode,
     playerRef,
-    autoplaySetting,
     replay,
     claimValues,
     userId,
     claimId,
     embedded,
     doAnalyticsView,
+    doAnalyticsBuffer,
     claimRewards,
     uri,
     playerServerRef,
-    clearPosition,
     isLivestreamClaim,
+    channelTitle,
   });
 
   const videoJsOptions = {
     preload: 'auto',
-    playbackRates: videoPlaybackRates,
+    playbackRates: VIDEO_PLAYBACK_RATES,
     responsive: true,
     controls: true,
     html5: {
       vhs: {
-        overrideNative: !videojs.browser.IS_ANY_SAFARI,
-        allowSeeksWithinUnsafeLiveWindow: true,
+        overrideNative: overrideNativeVhs, // !videojs.browser.IS_ANY_SAFARI,
         enableLowInitialPlaylist: false,
-        handlePartialData: true,
         fastQualityChange: true,
+        useDtsForTimestampOffset: true,
       },
     },
     liveTracker: {
@@ -225,19 +235,17 @@ export default React.memo<Props>(function VideoJs(props: Props) {
     muted: startMuted,
     poster: poster, // thumb looks bad in app, and if autoplay, flashing poster is annoying
     plugins: { eventTracking: true, overlay: OVERLAY.OVERLAY_DATA },
-    // fixes problem of errant CC button showing up on iOS
-    // the true fix here is to fix the m3u8 file, see: https://github.com/lbryio/lbry-desktop/pull/6315
     controlBar: {
-      subsCapsButton: false,
       currentTimeDisplay: !isLivestreamClaim,
       timeDivider: !isLivestreamClaim,
       durationDisplay: !isLivestreamClaim,
       remainingTimeDisplay: !isLivestreamClaim,
+      subsCapsButton: !IS_IOS,
     },
     techOrder: ['chromecast', 'html5'],
     chromecast: {
       requestTitleFn: (src) => title || '',
-      requestSubtitleFn: (src) => channelName || '',
+      requestSubtitleFn: (src) => channelTitle || '',
     },
     bigPlayButton: embedded, // only show big play button if embedded
     liveui: isLivestreamClaim,
@@ -268,6 +276,8 @@ export default React.memo<Props>(function VideoJs(props: Props) {
       // Initialize mobile UI.
       player.mobileUi();
 
+      player.i18n();
+
       if (!embedded) {
         window.player.bigPlayButton && window.player.bigPlayButton.hide();
       } else {
@@ -276,7 +286,16 @@ export default React.memo<Props>(function VideoJs(props: Props) {
       }
 
       // Add quality selector to player
-      if (showQualitySelector) player.hlsQualitySelector({ displayCurrentQuality: true });
+      if (showQualitySelector) {
+        player.hlsQualitySelector({
+          displayCurrentQuality: true,
+          originalHeight: claimValues?.video?.height,
+          defaultQuality,
+          initialQualityChange,
+          setInitialQualityChange,
+          doToast,
+        });
+      }
 
       // Add recsys plugin
       if (shareTelemetry) {
@@ -333,19 +352,17 @@ export default React.memo<Props>(function VideoJs(props: Props) {
   //   }
   // }, [showQualitySelector]);
 
-  /** instantiate videoJS and dispose of it when done with code **/
   // This lifecycle hook is only called once (on mount), or when `isAudio` or `source` changes.
   useEffect(() => {
     (async function () {
-      // test if perms to play video are available
       let canAutoplayVideo = await canAutoplay.video({ timeout: 2000, inline: true });
-
       canAutoplayVideo = canAutoplayVideo.result === true;
 
       const vjsElement = createVideoPlayerDOM(containerRef.current);
-
-      // Initialize Video.js
       const vjsPlayer = initializeVideoPlayer(vjsElement, canAutoplayVideo);
+      if (!vjsPlayer) {
+        return;
+      }
 
       // Add reference to player to global scope
       window.player = vjsPlayer;
@@ -355,50 +372,46 @@ export default React.memo<Props>(function VideoJs(props: Props) {
 
       window.addEventListener('keydown', curried_function(playerRef, containerRef));
 
-      // $FlowFixMe
       const controlBar = document.querySelector('.vjs-control-bar');
-      if (controlBar) controlBar.style.setProperty('opacity', '1', 'important');
+      if (controlBar) {
+        controlBar.style.setProperty('opacity', '1', 'important');
+      }
 
       if (isLivestreamClaim && userClaimId) {
-        // $FlowFixMe
+        vjsPlayer.isLivestream = true;
         vjsPlayer.addClass('livestreamPlayer');
-
-        // $FlowFixMe
-        vjsPlayer.src({
-          type: 'application/x-mpegURL',
-          src: livestreamVideoUrl,
-        });
+        vjsPlayer.src({ type: 'application/x-mpegURL', src: livestreamVideoUrl });
       } else {
-        // $FlowFixMe
+        vjsPlayer.isLivestream = false;
         vjsPlayer.removeClass('livestreamPlayer');
 
         // change to m3u8 if applicable
         const response = await fetch(source, { method: 'HEAD', cache: 'no-store' });
-
         playerServerRef.current = response.headers.get('x-powered-by');
+        vjsPlayer.claimSrcOriginal = { type: sourceType, src: source };
 
         if (response && response.redirected && response.url && response.url.endsWith('m3u8')) {
-          // use m3u8 source
-          // $FlowFixMe
-          vjsPlayer.src({
-            type: 'application/x-mpegURL',
-            src: response.url,
-          });
+          vjsPlayer.claimSrcVhs = { type: 'application/x-mpegURL', src: response.url };
+          vjsPlayer.src(vjsPlayer.claimSrcVhs);
+
+          const trimmedPath = response.url.substring(0, response.url.lastIndexOf('/'));
+          const thumbnailPath = trimmedPath + '/stream_sprite.vtt';
+
+          // disable thumbnails on mobile for now
+          if (!IS_MOBILE) {
+            vjsPlayer.vttThumbnails({
+              src: thumbnailPath,
+              showTimestamp: true,
+            });
+          }
         } else {
-          // use original mp4 source
-          // $FlowFixMe
-          vjsPlayer.src({
-            type: sourceType,
-            src: source,
-          });
+          vjsPlayer.src(vjsPlayer.claimSrcOriginal);
         }
       }
 
-      // load video once source setup
-      // $FlowFixMe
       vjsPlayer.load();
 
-      // fix invisible vidcrunch overlay on IOS
+      // fix invisible vidcrunch overlay on IOS  << TODO: does not belong here. Move to ads.jsx (#739)
       if (IS_IOS) {
         // ads video player
         const adsClaimDiv = document.querySelector('.ads__claim-item');

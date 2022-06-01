@@ -8,7 +8,7 @@ declare type HomepageObject = {
 
 declare type HomepageData = {
   [string]: HomepageObject,
-  default: any => any,
+  default: (any) => any,
 };
 
 declare type RowDataItem = {
@@ -20,10 +20,14 @@ declare type RowDataItem = {
   extra?: any,
   pinnedUrls?: Array<string>,
   pinnedClaimIds?: Array<string>, // takes precedence over pinnedUrls
+  hideByDefault?: boolean,
   options?: {
     channelIds?: Array<string>,
+    excludedChannelIds?: Array<string>,
     limitClaimsPerChannel?: number,
     pageSize?: number,
+    releaseTime?: string,
+    searchLanguages?: Array<string>,
   },
   route?: string,
   hideForUnauth?: boolean,

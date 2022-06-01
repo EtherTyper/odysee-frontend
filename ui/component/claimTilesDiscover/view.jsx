@@ -1,11 +1,11 @@
 // @flow
 import type { Node } from 'react';
-import React from 'react';
+import React, { useRef } from 'react';
 import Button from 'component/button';
 import ClaimPreviewTile from 'component/claimPreviewTile';
 import I18nMessage from 'component/i18nMessage';
 import useFetchViewCount from 'effects/use-fetch-view-count';
-import useLastVisibleItem from 'effects/use-last-visible-item';
+import useGetLastVisibleSlot from 'effects/use-get-last-visible-slot';
 import useResolvePins from 'effects/use-resolve-pins';
 import useGetUserMemberships from 'effects/use-get-user-memberships';
 
@@ -32,7 +32,7 @@ type Props = {
   prefixUris?: Array<string>,
   pins?: { urls?: Array<string>, claimIds?: Array<string>, onlyPinForOrder?: string },
   uris: Array<string>,
-  injectedItem?: { node: Node, index?: number, replace?: boolean },
+  injectedItem?: ListInjectedItem,
   showNoSourceClaims?: boolean,
   renderProperties?: (Claim) => ?Node,
   fetchViewCount?: boolean,
@@ -52,6 +52,7 @@ type Props = {
   hasSource?: boolean,
   hasNoSource?: boolean,
   forceShowReposts?: boolean, // overrides SETTINGS.HIDE_REPOSTS
+  loading: boolean,
   // --- select ---
   location: { search: string },
   claimSearchResults: Array<string>,
@@ -90,15 +91,18 @@ function ClaimTilesDiscover(props: Props) {
     doFetchUserMemberships,
     doResolveClaimIds,
     doResolveUris,
+    loading,
   } = props;
 
   const listRef = React.useRef();
-  const injectedIndex = useLastVisibleItem(injectedItem, listRef);
+  const findLastVisibleSlot = injectedItem && injectedItem.node && injectedItem.index === undefined;
+  const lastVisibleIndex = useGetLastVisibleSlot(listRef, !findLastVisibleSlot);
 
   const prevUris = React.useRef();
   const claimSearchUris = claimSearchResults || [];
   const isUnfetchedClaimSearch = claimSearchResults === undefined;
   const resolvedPinUris = useResolvePins({ pins, claimsById, doResolveClaimIds, doResolveUris });
+  const uriBuffer = useRef([]);
 
   const timedOut = claimSearchResults === null;
   const shouldPerformSearch = !fetchingClaimSearch && !timedOut && claimSearchUris.length === 0;
@@ -140,6 +144,22 @@ function ClaimTilesDiscover(props: Props) {
       uris.splice(2, 0, ...resolvedPinUris);
     }
   }
+
+  const getInjectedItem = (index) => {
+    if (injectedItem && injectedItem.node) {
+      if (typeof injectedItem.node === 'function') {
+        return injectedItem.node(index, lastVisibleIndex, pageSize);
+      } else {
+        if (injectedItem.index === undefined || injectedItem.index === null) {
+          return index === lastVisibleIndex ? injectedItem.node : null;
+        } else {
+          return index === injectedItem.index ? injectedItem.node : null;
+        }
+      }
+    }
+
+    return null;
+  };
 
   // --------------------------------------------------------------------------
   // --------------------------------------------------------------------------
@@ -183,31 +203,37 @@ function ClaimTilesDiscover(props: Props) {
 
   return (
     <ul ref={listRef} className="claim-grid">
-      {finalUris && finalUris.length
+      {!loading && finalUris && finalUris.length
         ? finalUris.map((uri, i) => {
             if (uri) {
-              if (injectedIndex === i && injectedItem && injectedItem.replace) {
-                return <React.Fragment key={uri}>{injectedItem.node}</React.Fragment>;
+              const inj = getInjectedItem(i);
+              if (inj) {
+                if (!uriBuffer.current.includes(i)) {
+                  uriBuffer.current.push(i);
+                }
               }
-
               return (
                 <React.Fragment key={uri}>
-                  {injectedIndex === i && injectedItem && injectedItem.node}
-                  <ClaimPreviewTile
-                    showNoSourceClaims={hasNoSource || showNoSourceClaims}
-                    uri={uri}
-                    properties={renderProperties}
-                  />
+                  {inj && inj}
+                  {(i < finalUris.length - uriBuffer.current.length || i < pageSize - uriBuffer.current.length) && (
+                    <ClaimPreviewTile
+                      showNoSourceClaims={hasNoSource || showNoSourceClaims}
+                      uri={uri}
+                      properties={renderProperties}
+                    />
+                  )}
                 </React.Fragment>
               );
             } else {
-              return <ClaimPreviewTile showNoSourceClaims={hasNoSource || showNoSourceClaims} key={i} placeholder />;
+              return (
+                <ClaimPreviewTile showNoSourceClaims={hasNoSource || showNoSourceClaims} key={i} placeholder pulse />
+              );
             }
           })
         : new Array(pageSize)
             .fill(1)
             .map((x, i) => (
-              <ClaimPreviewTile showNoSourceClaims={hasNoSource || showNoSourceClaims} key={i} placeholder />
+              <ClaimPreviewTile showNoSourceClaims={hasNoSource || showNoSourceClaims} key={i} placeholder pulse />
             ))}
     </ul>
   );
@@ -220,6 +246,7 @@ export default React.memo<Props>(ClaimTilesDiscover, areEqual);
 
 function trace(key, value) {
   // @if process.env.DEBUG_TILE_RENDER
+
   // $FlowFixMe "cannot coerce certain types".
   console.log(`[claimTilesDiscover] ${key}: ${value}`); // eslint-disable-line no-console
   // @endif

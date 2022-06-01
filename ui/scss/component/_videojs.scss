@@ -32,15 +32,37 @@ $control-bar-icon-size: 0.8rem;
       }
     }
   }
+  @media (max-width: $breakpoint-small) {
+    .vjs-control {
+      margin-left: 0 !important;
+      margin-right: 0 !important;
+    }
+    .vjs-time-control {
+      padding-left: 0 !important;
+    }
+  }
 
   // Progress Bar
   .vjs-progress-control.vjs-control {
     position: absolute;
-    display: flex;
+    display: block;
     align-items: center;
-    width: 100%;
+    width: calc(100% - var(--spacing-m) * 2);
     height: 1rem;
     bottom: 90%;
+    margin: 1px var(--spacing-m) !important;
+
+    @media (max-width: $breakpoint-small) {
+      width: calc(100% - var(--spacing-s) * 2);
+      margin: 1px var(--spacing-s) !important;
+    }
+
+    .vjs-vtt-thumbnail-display {
+      margin-top: -122px;
+      border: 1px solid white;
+      background-color: black !important;
+      visibility: hidden;
+    }
 
     // Circle play head
     .vjs-play-progress::before {
@@ -48,23 +70,30 @@ $control-bar-icon-size: 0.8rem;
       transition: transform 0.1s;
     }
 
+    .vjs-progress-holder {
+      margin: 0;
+    }
+
     &:hover {
       .vjs-play-progress::before {
         transform: scale(1);
       }
+      .vjs-progress-holder {
+        margin-top: -0.1em !important;
+        height: 0.4em !important;
+      }
     }
 
     // Progress Slider
-    .vjs-slider {
-      margin: 0 1rem;
-    }
+    //.vjs-slider {
+    //  margin: 0 1rem;
+    //}
   }
 
   // Load progress color
   .vjs-load-progress,
   .vjs-load-progress div {
-    //background-color: rgba(160, 160, 160, 0.5);
-    background-color: rgba(var(--color-secondary), 0.5);
+    background-color: rgba(255, 255, 255, 0.3);
   }
 
   // Progress Bar Background
@@ -106,7 +135,7 @@ $control-bar-icon-size: 0.8rem;
 
     .vjs-volume-control.vjs-volume-horizontal {
       transition: 0.1s;
-      margin-top: 2px;
+      margin-top: -2px !important;
     }
   }
 }
@@ -114,6 +143,9 @@ $control-bar-icon-size: 0.8rem;
 // Tooltip
 .vjs-mouse-display .vjs-time-tooltip {
   color: white;
+  white-space: nowrap;
+  top: -32px;
+  padding-top: 9px;
 }
 
 // Tooltip
@@ -166,12 +198,44 @@ $control-bar-icon-size: 0.8rem;
 }
 
 [dir] .vjs-menu-button-popup .vjs-menu .vjs-menu-content {
-  background-color: rgba(43, 51, 63);
+  //background-color: rgba(43, 51, 63);
+  background-color: rgba(var(--color-header-button-base), 0.9);
+  backdrop-filter: blur(4px);
+  border-radius: var(--border-radius);
+  border: 2px solid var(--color-header-background);
   max-height: 20em;
-  margin-bottom: calc(var(--spacing-xxs) * -1); // Prevents accidental dismissal when the gap is hovered.
+  margin-bottom: -3px; // Prevents accidental dismissal when the gap is hovered.
 
   li {
     font-size: $control-bar-popup-font-size;
+  }
+
+  .vjs-menu-title {
+    color: var(--color-text);
+    background-color: var(--color-header-background);
+  }
+
+  .vjs-menu-item {
+    color: var(--color-text);
+    margin: 2px;
+    margin-left: var(--spacing-s);
+    margin-right: var(--spacing-s);
+    &:first-child {
+      margin-top: var(--spacing-xxs);
+    }
+    &:last-child {
+      margin-bottom: var(--spacing-xxs);
+    }
+    &:hover {
+      color: var(--color-primary-contrast);
+      background-color: var(--color-primary);
+      border-radius: var(--border-radius);
+    }
+  }
+  .vjs-selected {
+    background-color: var(--color-primary);
+    border-radius: var(--border-radius);
+    color: var(--color-primary-contrast);
   }
 }
 
@@ -264,11 +328,24 @@ button.vjs-big-play-button {
   }
 }
 
+.vjs-seek-to-live-control {
+  margin-top: -4px !important;
+  margin-left: calc(var(--spacing-s) + 4px) !important;
+  @media (max-width: $breakpoint-small) {
+    padding-left: 0 !important;
+  }
+  .vjs-icon-placeholder {
+    &::before {
+      font-size: 0.9rem !important;
+    }
+  }
+}
+
 // Rearrange icons
-.vjs-play-control {
+.vjs-button--play-previous {
   order: 1 !important;
 }
-.vjs-button--play-previous {
+.vjs-play-control {
   order: 2 !important;
 }
 .vjs-button--play-next {
@@ -299,23 +376,37 @@ button.vjs-big-play-button {
 .vjs-custom-control-spacer {
   order: 9 !important;
 }
-.vjs-button--autoplay-next {
+.vjs-chapters-button {
   order: 10 !important;
 }
-.vjs-playback-rate {
+.vjs-subs-caps-button {
   order: 11 !important;
 }
-.vjs-chromecast-button {
+.vjs-button--autoplay-next {
   order: 12 !important;
 }
-.vjs-quality-selector {
+.vjs-playback-rate {
   order: 13 !important;
 }
-.vjs-button--theater-mode {
+.vjs-quality-selector {
   order: 14 !important;
+  display: flex;
+
+  .vjs-icon-placeholder {
+    word-break: break-word;
+    line-height: 1rem !important;
+  }
+}
+.vjs-chromecast-button,
+.vjs-airplay-button {
+  order: 15 !important;
+}
+
+.vjs-button--theater-mode {
+  order: 16 !important;
 }
 .vjs-fullscreen-control {
-  order: 15 !important;
+  order: 17 !important;
 }
 
 // livestream player
@@ -332,4 +423,11 @@ button.vjs-big-play-button {
     // hiding progress control for now
     display: none !important;
   }
+}
+
+.vjs-chapter-marker {
+  position: absolute;
+  height: 100%;
+  background-color: var(--color-error);
+  width: 2px;
 }

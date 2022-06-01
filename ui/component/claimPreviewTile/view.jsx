@@ -5,6 +5,7 @@ import { NavLink, withRouter } from 'react-router-dom';
 import ClaimPreviewProgress from 'component/claimPreviewProgress';
 import FileThumbnail from 'component/fileThumbnail';
 import UriIndicator from 'component/uriIndicator';
+import Icon from 'component/common/icon';
 import TruncatedText from 'component/common/truncated-text';
 import DateTime from 'component/dateTime';
 import LivestreamDateTime from 'component/livestreamDateTime';
@@ -22,6 +23,7 @@ import FileWatchLaterLink from 'component/fileWatchLaterLink';
 import ClaimRepostAuthor from 'component/claimRepostAuthor';
 import ClaimMenuList from 'component/claimMenuList';
 import CollectionPreviewOverlay from 'component/collectionPreviewOverlay';
+import * as ICONS from 'constants/icons';
 import { FYP_ID } from 'constants/urlParams';
 // $FlowFixMe cannot resolve ...
 import PlaceholderTx from 'static/img/placeholderTx.gif';
@@ -33,24 +35,30 @@ type Props = {
   mediaDuration?: string,
   resolveUri: (string) => void,
   isResolvingUri: boolean,
+  claimIsMine: boolean,
   history: { push: (string) => void },
   thumbnail: string,
   title: string,
   placeholder: boolean,
   banState: { blacklisted?: boolean, filtered?: boolean, muted?: boolean, blocked?: boolean },
+  geoRestriction: ?GeoRestriction,
   getFile: (string) => void,
   streamingUrl: string,
   isMature: boolean,
   showMature: boolean,
   showHiddenByUser?: boolean,
+  showNoSourceClaims?: boolean,
+  showUnresolvedClaims?: boolean,
   properties?: (Claim) => void,
   collectionId?: string,
   fypId?: string,
-  showNoSourceClaims?: boolean,
   isLivestream: boolean,
   viewCount: string,
   isLivestreamActive: boolean,
+  livestreamViewerCount: ?number,
   swipeLayout: boolean,
+  onHidden?: (string) => void,
+  pulse?: boolean,
 };
 
 // preview image cards used in related video functionality, channel overview page and homepage
@@ -60,12 +68,14 @@ function ClaimPreviewTile(props: Props) {
     uri,
     date,
     isResolvingUri,
+    claimIsMine,
     thumbnail,
     title,
     resolveUri,
     claim,
     placeholder,
     banState,
+    geoRestriction,
     getFile,
     streamingUrl,
     isMature,
@@ -73,17 +83,22 @@ function ClaimPreviewTile(props: Props) {
     showHiddenByUser,
     properties,
     showNoSourceClaims,
+    showUnresolvedClaims,
     isLivestream,
     isLivestreamActive,
+    livestreamViewerCount,
     collectionId,
     fypId,
     mediaDuration,
     viewCount,
     swipeLayout = false,
+    onHidden,
+    pulse,
   } = props;
   const isRepost = claim && claim.repost_channel_url;
   const isCollection = claim && claim.value_type === 'collection';
   const isStream = claim && claim.value_type === 'stream';
+  const isAbandoned = !isResolvingUri && !claim;
   // $FlowFixMe
   const isPlayable =
     claim &&
@@ -123,20 +138,10 @@ function ClaimPreviewTile(props: Props) {
   const channelUri = !isChannel ? signingChannel && signingChannel.permanent_url : claim && claim.permanent_url;
   const channelTitle = signingChannel && ((signingChannel.value && signingChannel.value.title) || signingChannel.name);
 
-  // Aria-label value for claim preview
-  let ariaLabelData = isChannel ? title : formatClaimPreviewTitle(title, channelTitle, date, mediaDuration);
+  const isChannelPage = window.location.pathname.startsWith('/@');
+  const shouldShowViewCount = !(!viewCount || (claim && claim.repost_url) || isLivestream || !isChannelPage);
 
-  function handleClick(e) {
-    if (navigateUrl) {
-      history.push(navigateUrl);
-    }
-  }
-
-  React.useEffect(() => {
-    if (isValid && !isResolvingUri && shouldFetch && uri) {
-      resolveUri(uri);
-    }
-  }, [isValid, isResolvingUri, uri, resolveUri, shouldFetch]);
+  const ariaLabelData = isChannel ? title : formatClaimPreviewTitle(title, channelTitle, date, mediaDuration);
 
   let shouldHide = false;
 
@@ -144,24 +149,61 @@ function ClaimPreviewTile(props: Props) {
     // Unfortunately needed until this is resolved
     // https://github.com/lbryio/lbry-sdk/issues/2785
     shouldHide = true;
-  } else {
-    shouldHide =
-      banState.blacklisted || banState.filtered || (!showHiddenByUser && (banState.muted || banState.blocked));
   }
 
-  if (shouldHide || (isLivestream && !showNoSourceClaims)) {
+  if (!shouldHide && geoRestriction && !claimIsMine) {
+    shouldHide = true;
+  }
+
+  if (!shouldHide && !placeholder) {
+    shouldHide =
+      banState.blacklisted ||
+      banState.filtered ||
+      (!showHiddenByUser && (banState.muted || banState.blocked)) ||
+      (isAbandoned && !showUnresolvedClaims);
+  }
+
+  if (!shouldHide) {
+    shouldHide = isLivestream && !showNoSourceClaims;
+  }
+
+  // **************************************************************************
+  // **************************************************************************
+
+  function handleClick(e) {
+    if (navigateUrl) {
+      history.push(navigateUrl);
+    }
+  }
+
+  // **************************************************************************
+  // **************************************************************************
+
+  React.useEffect(() => {
+    if (isValid && !isResolvingUri && shouldFetch && uri) {
+      resolveUri(uri);
+    }
+  }, [isValid, isResolvingUri, uri, resolveUri, shouldFetch]);
+
+  React.useEffect(() => {
+    if (onHidden && shouldHide) {
+      onHidden(props.uri);
+    }
+  }, [shouldHide, onHidden, props.uri]);
+
+  // **************************************************************************
+  // **************************************************************************
+
+  if (shouldHide) {
     return null;
   }
-
-  const isChannelPage = window.location.pathname.startsWith('/@');
-
-  const shouldShowViewCount = !(!viewCount || (claim && claim.repost_url) || isLivestream || !isChannelPage);
 
   if (placeholder || (!claim && isResolvingUri)) {
     return (
       <li
         className={classnames('placeholder claim-preview--tile', {
           'swipe-list__item claim-preview--horizontal-tile': swipeLayout,
+          pulse: pulse,
         })}
       >
         <div className="media__thumb">
@@ -187,8 +229,16 @@ function ClaimPreviewTile(props: Props) {
   }
 
   let liveProperty = null;
-  if (isLivestream === true) {
-    liveProperty = (claim) => <>LIVE</>;
+  if (isLivestream) {
+    if (isLivestreamActive === true && livestreamViewerCount) {
+      liveProperty = (claim) => (
+        <span className="livestream__viewer-count">
+          {livestreamViewerCount} <Icon icon={ICONS.EYE} />
+        </span>
+      );
+    } else {
+      liveProperty = (claim) => <>LIVE</>;
+    }
   }
 
   return (

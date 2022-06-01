@@ -13,12 +13,13 @@ import NotificationBubble from 'component/notificationBubble';
 import DebouncedInput from 'component/common/debounced-input';
 import I18nMessage from 'component/i18nMessage';
 import ChannelThumbnail from 'component/channelThumbnail';
-import { useIsMobile, useIsLargeScreen, isTouch } from 'effects/use-screensize';
+import { useIsMobile, useIsLargeScreen } from 'effects/use-screensize';
 import { GetLinksData } from 'util/buildHomepage';
+import { platform } from 'util/platform';
 import { DOMAIN, ENABLE_UI_NOTIFICATIONS, ENABLE_NO_SOURCE_CLAIMS } from 'config';
 import PremiumBadge from 'component/common/premium-badge';
 
-const touch = isTouch();
+const touch = platform.isTouch();
 
 type SideNavLink = {
   title: string,
@@ -86,6 +87,13 @@ const PLAYLISTS: SideNavLink = {
   hideForUnauth: true,
 };
 
+const WATCH_HISTORY: SideNavLink = {
+  title: 'Watch History',
+  link: `/$/${PAGES.WATCH_HISTORY}`,
+  icon: ICONS.WATCH_HISTORY,
+  hideForUnauth: true,
+};
+
 const PREMIUM: SideNavLink = {
   title: 'Premium',
   link: `/$/${PAGES.ODYSEE_MEMBERSHIP}`,
@@ -117,12 +125,6 @@ const UNAUTH_LINKS: Array<SideNavLink> = [
   },
 ];
 
-const WILD_WEST: SideNavLink = {
-  title: 'Wild West',
-  link: `/$/${PAGES.WILD_WEST}`,
-  icon: ICONS.WILD_WEST,
-};
-
 // ****************************************************************************
 // ****************************************************************************
 
@@ -142,9 +144,8 @@ type Props = {
   doClearPurchasedUriSuccess: () => void,
   user: ?User,
   homepageData: any,
-  wildWestDisabled: boolean,
   doClearClaimSearch: () => void,
-  odyseeMembership: string,
+  odyseeMembership: ?string,
   odyseeMembershipByUri: (uri: string) => string,
   doFetchLastActiveSubs: (force?: boolean, count?: number) => void,
 };
@@ -165,7 +166,6 @@ function SideNavigation(props: Props) {
     homepageData,
     user,
     followedTags,
-    wildWestDisabled,
     doClearClaimSearch,
     odyseeMembership,
     odyseeMembershipByUri,
@@ -175,7 +175,7 @@ function SideNavigation(props: Props) {
   const isLargeScreen = useIsLargeScreen();
 
   const EXTRA_SIDEBAR_LINKS = GetLinksData(homepageData, isLargeScreen).map(
-    ({ pinnedUrls, pinnedClaimIds, ...theRest }) => theRest
+    ({ pinnedUrls, pinnedClaimIds, hideByDefault, ...theRest }) => theRest
   );
 
   const MOBILE_LINKS: Array<SideNavLink> = [
@@ -536,6 +536,7 @@ function SideNavigation(props: Props) {
               {!showMicroMenu && getLink(WATCH_LATER)}
               {!showMicroMenu && getLink(FAVORITES)}
               {getLink(PLAYLISTS)}
+              {!showMicroMenu && getLink(WATCH_HISTORY)}
             </ul>
 
             <ul
@@ -548,7 +549,6 @@ function SideNavigation(props: Props) {
                 <>
                   {/* $FlowFixMe: GetLinksData type needs an update */}
                   {EXTRA_SIDEBAR_LINKS.map((linkProps) => getLink(linkProps))}
-                  {!wildWestDisabled && getLink(WILD_WEST)}
                 </>
               )}
             </ul>
