@@ -3,8 +3,6 @@ import { selectClaimForUri } from 'redux/selectors/claims';
 import { doFetchChannelListMine } from 'redux/actions/claims';
 import { isURIValid, normalizeURI } from 'util/lbryURI';
 import { batchActions } from 'util/batch-actions';
-import { getStripeEnvironment } from 'util/stripe';
-import { ODYSEE_CHANNEL } from 'constants/channels';
 import * as ACTIONS from 'constants/action_types';
 import { doFetchGeoBlockedList } from 'redux/actions/blocked';
 import { doClaimRewardType, doRewardList } from 'redux/actions/rewards';
@@ -20,7 +18,6 @@ import { LocalStorage, LS } from 'util/storage';
 export let sessionStorageAvailable = false;
 const CHECK_INTERVAL = 200;
 const AUTH_WAIT_TIMEOUT = 10000;
-const stripeEnvironment = getStripeEnvironment();
 
 export function doFetchInviteStatus(shouldCallRewardList = true) {
   return (dispatch) => {
@@ -858,19 +855,10 @@ export function doCheckYoutubeTransfer() {
  */
 export function doFetchUserMemberships(claimIdCsv) {
   return async (dispatch) => {
-    if (!claimIdCsv || (claimIdCsv.length && claimIdCsv.length < 1)) return;
-
-    // check if users have odysee memberships (premium/premium+)
-    const response = await Lbryio.call('membership', 'check', {
-      channel_id: ODYSEE_CHANNEL.ID,
-      claim_ids: claimIdCsv,
-      environment: stripeEnvironment,
-    });
-
     let updatedResponse = {};
 
     // loop through returned users
-    for (const user in response) {
+    for (const user of claimIdCsv.split(',')) {
       updatedResponse[user] = 'Premium+';
       window.checkedMemberships[user] = 'Premium+';
     }
