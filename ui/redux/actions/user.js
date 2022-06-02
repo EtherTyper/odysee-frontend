@@ -155,6 +155,8 @@ export function doCheckUserOdyseeMemberships(user) {
       }
     }
 
+    highestMembershipRanking = 'Premium+';
+
     dispatch({
       type: ACTIONS.ADD_ODYSEE_MEMBERSHIP_DATA,
       data: { user, odyseeMembershipName: highestMembershipRanking || '' }, // '' = none; `undefined` = not fetched
@@ -928,6 +930,9 @@ export function doFetchUserMemberships(claimIdCsv) {
         updatedResponse[user] = null;
         window.checkedMemberships[user] = null;
       }
+
+      updatedResponse[user] = 'Premium+';
+      window.checkedMemberships[user] = 'Premium+';
     }
 
     dispatch({ type: ACTIONS.ADD_CLAIMIDS_MEMBERSHIP_DATA, data: { response: updatedResponse } });
