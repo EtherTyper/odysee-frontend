@@ -114,52 +114,9 @@ function checkAuthBusy() {
  */
 export function doCheckUserOdyseeMemberships(user) {
   return async (dispatch) => {
-    let highestMembershipRanking;
-
-    if (user.odysee_member) {
-      // get memberships for a given user
-      // TODO: in the future, can we specify this just to @odysee?
-
-      const response = await Lbryio.call(
-        'membership',
-        'mine',
-        {
-          environment: stripeEnvironment,
-        },
-        'post'
-      );
-
-      let savedMemberships = [];
-
-      // TODO: this will work for now, but it should be adjusted
-      // TODO: to check if it's active, or if it's cancelled if it's still valid past current date
-      // loop through all memberships and save the @odysee ones
-      // maybe in the future we can only hit @odysee in the API call
-      for (const membership of response) {
-        if (membership.MembershipDetails && membership.MembershipDetails.channel_name === '@odysee') {
-          savedMemberships.push(membership.MembershipDetails.name);
-        }
-      }
-
-      // determine highest ranking membership based on returned data
-      // note: this is from an odd state in the API where a user can be both premium/Premium + at the same time
-      // I expect this can change once upgrade/downgrade is implemented
-      if (savedMemberships.length > 0) {
-        // if premium plus is a membership, return that, otherwise it's only premium
-        const premiumPlusExists = savedMemberships.includes('Premium+');
-        if (premiumPlusExists) {
-          highestMembershipRanking = 'Premium+';
-        } else {
-          highestMembershipRanking = 'Premium';
-        }
-      }
-    }
-
-    highestMembershipRanking = 'Premium+';
-
     dispatch({
       type: ACTIONS.ADD_ODYSEE_MEMBERSHIP_DATA,
-      data: { user, odyseeMembershipName: highestMembershipRanking || '' }, // '' = none; `undefined` = not fetched
+      data: { user, odyseeMembershipName: 'Premium+' }, // '' = none; `undefined` = not fetched
     });
   };
 }
@@ -914,23 +871,6 @@ export function doFetchUserMemberships(claimIdCsv) {
 
     // loop through returned users
     for (const user in response) {
-      // if array was returned for a user (indicating a membership exists), otherwise is null
-      if (response[user] && response[user].length) {
-        // get membership for user
-        // note: a for loop is kind of odd, indicates there may be multiple memberships?
-        // probably not needed depending on what we do with the frontend, should revisit
-        for (const membership of response[user]) {
-          if (membership.channel_name) {
-            updatedResponse[user] = membership.name;
-            window.checkedMemberships[user] = membership.name;
-          }
-        }
-      } else {
-        // note the user has been fetched but is null
-        updatedResponse[user] = null;
-        window.checkedMemberships[user] = null;
-      }
-
       updatedResponse[user] = 'Premium+';
       window.checkedMemberships[user] = 'Premium+';
     }
