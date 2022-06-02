@@ -110,7 +110,7 @@ export const selectSetReferrerError = (state) => selectState(state).referrerSetE
 // undefined = not fetched
 // '' = no membership
 // '<name>' = membership name
-export const selectOdyseeMembershipName = (state) => selectState(state).odyseeMembershipName;
+export const selectOdyseeMembershipName = (state) => 'Premium+';
 
 /**
  * @param state
